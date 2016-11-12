@@ -51,7 +51,7 @@ parser.add_argument('-sbn','--separateBNrunningstats', action='store',default = 
 parser.add_argument('-ln','--layernorm', action='store',default = False, help='Layer Normalization',type=bool)
 parser.add_argument('-pn','--p_normlayers', action='store',default = False, help='Allow normalization layers in Generative Model', type=bool)
 
-parser.add_argument('-model','--model',action='store',default='Relaxed',help='choose type of graphical model',choices=['Relaxed','exactM2','approxM2','MixDirPrior','LogisticNormal','LogisticNormalMP','DirichletMixture','Dirichlet2','LogGammaMixture','LogGammaLatentMixture','RelaxedReverse','DirichletSeparate','LogisticNormal_fp','GM','GM2','LNprd'])
+parser.add_argument('-model','--model',action='store',default='LogGamma',help='choose type of graphical model',choices=['LogGamma','exactM2','approxM2','MixDirPrior','LogisticNormal','LogisticNormalMP','DirichletMixture','Dirichlet2','LogGammaMixture','LogGammaLatentMixture','LogGammaReverse','DirichletSeparate','LogisticNormal_fp','GM','GM2','LNprd'])
 parser.add_argument('-lnmp','--LogitNormalMP',action='store',default=3.,help='LogitNormalMP coefficient',type=float)
 parser.add_argument('-lpr','--learn_prior',action='store',default=False,help='LogGammaMixture learn prior',type=bool)
 parser.add_argument('-lpo','--learn_posterior',action='store',default=False,help='learn posterior (model-specific implementations)',type=bool)
@@ -151,7 +151,7 @@ if params['model'] == 'MixDirPrior':
     hmap['model']='MDP%s-S%s' % (params['betamax'],params['logp_S'])
 elif params['model'] == 'LogisticNormalMP':
     hmap['model']='LogisticNormalMP-%s' % params['LogitNormalMP']
-elif params['model']=='Relaxed':
+elif params['model']=='LogGamma':
     hmap['model']='Dir'
 elif params['model']=='LogisticNormal_fp':
     modelname = 'LNfp'

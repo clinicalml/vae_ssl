@@ -1,8 +1,8 @@
 import os,time
 import numpy as np
 from theanomodels.datasets.load import loadDataset
-from theanomodels.utils.parse_args_vae_ssl import params 
 from theanomodels.utils.misc import removeIfExists,createIfAbsent,mapPrint,saveHDF5,displayTime
+from parse_args import params 
 import ipdb
 
 dataset = 'mnist'
@@ -19,56 +19,56 @@ mapPrint('Options: ',params)
 start_time = time.time()
 vae    = None
 
-if params['model'] == 'Relaxed':
-    from models.vae_ssl_LogGamma import LogGammaSemiVAE
+if params['model'] == 'LogGamma':
+    from models.LogGamma import LogGammaSemiVAE
     SSL_VAE_CLASS = LogGammaSemiVAE
-elif params['model'] == 'RelaxedReverse':
-    from models.vae_ssl_reverse import LogGammaSemiVAEReverse
+elif params['model'] == 'LogGammaReverse':
+    from models.reverse import LogGammaSemiVAEReverse
     SSL_VAE_CLASS = LogGammaSemiVAEReverse
 elif params['model'] == 'DirichletSeparate':
-    from models.vae_ssl_separate import LogGammaSemiVAESeparate
+    from models.separate import LogGammaSemiVAESeparate
     SSL_VAE_CLASS = LogGammaSemiVAESeparate
 elif params['model'] == 'approxM2':
-    from models.vae_ssl_approxM2 import SemiVAE
+    from models.approxM2 import SemiVAE
     SSL_VAE_CLASS = SemiVAE
 elif params['model'] == 'exactM2':
-    from models.vae_ssl_exactM2 import ExactSemiVAE
+    from models.exactM2 import ExactSemiVAE
     SSL_VAE_CLASS = ExactSemiVAE
 elif params['model'] == 'MixDirPrior':
-    from models.vae_ssl_MixDirPrior import MixDirPriorSemiVAE
+    from models.MixDirPrior import MixDirPriorSemiVAE
     SSL_VAE_CLASS = MixDirPriorSemiVAE 
 elif params['model'] == 'DirichletMixture':
-    from models.vae_ssl_DirichletMixture import DirichletMixtureSemiVAE 
+    from models.DirichletMixture import DirichletMixtureSemiVAE 
     SSL_VAE_CLASS = DirichletMixtureSemiVAE 
 elif params['model'] == 'LogGammaMixture':
-    from models.vae_ssl_LogGammaMixture import LogGammaMixtureSemiVAE 
+    from models.LogGammaMixture import LogGammaMixtureSemiVAE 
     SSL_VAE_CLASS = LogGammaMixtureSemiVAE 
 elif params['model'] == 'LogGammaLatentMixture':
-    from models.vae_ssl_LogGammaLatentMixture import LogGammaLatentMixtureSemiVAE 
+    from models.LogGammaLatentMixture import LogGammaLatentMixtureSemiVAE 
     SSL_VAE_CLASS = LogGammaLatentMixtureSemiVAE 
 elif params['model'] == 'GM':
-    from models.vae_ssl_GaussianMixture import GaussianMixtureSemiVAE 
+    from models.GaussianMixture import GaussianMixtureSemiVAE 
     SSL_VAE_CLASS = GaussianMixtureSemiVAE 
 elif params['model'] == 'GM2':
-    from models.vae_ssl_GaussianMixture2 import GaussianMixtureSemiVAE 
+    from models.GaussianMixture2 import GaussianMixtureSemiVAE 
     SSL_VAE_CLASS = GaussianMixtureSemiVAE 
 elif params['model'] == 'Dirichlet2':
-    from models.vae_ssl_Dirichlet import DirichletSemiVAE 
+    from models.Dirichlet import DirichletSemiVAE 
     SSL_VAE_CLASS = DirichletSemiVAE 
 elif params['model'] == 'LogisticNormal':
-    from models.vae_ssl_LogisticNormal import LogisticNormalSemiVAE 
+    from models.LogisticNormal import LogisticNormalSemiVAE 
     SSL_VAE_CLASS = LogisticNormalSemiVAE 
 elif params['model'] == 'LogisticNormal_fp':
     if params['modifiedBatchNorm']:
-        from models.vae_ssl_LogisticNormal_fp_mbn import LogisticNormalSemiVAE 
+        from models.LogisticNormal_fp_mbn import LogisticNormalSemiVAE 
     else:
-        from models.vae_ssl_LogisticNormal_fp import LogisticNormalSemiVAE 
+        from models.LogisticNormal_fp import LogisticNormalSemiVAE 
     SSL_VAE_CLASS = LogisticNormalSemiVAE 
 elif params['model'] == 'LNprd':
-    from models.vae_ssl_LogisticNormal_prod import LogisticNormalSemiVAE 
+    from models.LogisticNormal_prod import LogisticNormalSemiVAE 
     SSL_VAE_CLASS = LogisticNormalSemiVAE 
 elif params['model'] == 'LogisticNormalMP':
-    from models.vae_ssl_LogisticNormalMP import LogisticNormalMPSemiVAE 
+    from models.LogisticNormalMP import LogisticNormalMPSemiVAE 
     SSL_VAE_CLASS = LogisticNormalMPSemiVAE 
 else:
     raise NameError('unhandled model type: %s' % params['model'])

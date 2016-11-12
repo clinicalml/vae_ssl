@@ -14,7 +14,7 @@ from theanomodels.utils.optimizer import adam,rmsprop
 from theanomodels.utils.misc import saveHDF5
 from randomvariates import randomLogGamma
 from special import Psi, Polygamma
-from __init__ import BaseModel
+from theanomodels.models import BaseModel
 import ipdb
 import random
 import scipy
@@ -117,6 +117,7 @@ class LogGammaSemiVAE(BaseModel, object):
                     _createParams: create parameters necessary for the model
         """
         npWeights = OrderedDict()
+        self.track_params = []
         if 'q_dim_hidden' not in self.params or 'p_dim_hidden' not in self.params:
             self.params['q_dim_hidden']= dim_hidden
             self.params['p_dim_hidden']= dim_hidden
@@ -212,7 +213,7 @@ class LogGammaSemiVAE(BaseModel, object):
             npWeights['p_mean_b']     = self._getWeight((self.params['dim_observations'],))
         if self.params['learn_posterior']:
             npWeights['posterior_W'] = np.ones(1).astype(config.floatX)
-        self.track_params=['posterior_W']
+            self.track_params+=['posterior_W']
         return npWeights
     
     def _fakeData(self,XU,XL,Y,epsU,epsL):
@@ -302,7 +303,7 @@ class LogGammaSemiVAE(BaseModel, object):
             return lin_out
         else:
             self._p('Adding %s after batchnorm %s'%(self.params['nonlinearity'],W_name))
-            return self._applyNL(lin_out,W)
+            return self._applyNL(lin_out)
         
     def _BNlayerModified(self, inp, W, b, prefix, onlyLinear=False, evaluation=False):
         """
@@ -326,7 +327,7 @@ class LogGammaSemiVAE(BaseModel, object):
         if onlyLinear:
             return bn_lin
         else:
-            return self._applyNL(bn_lin,W)
+            return self._applyNL(bn_lin)
         
     def _buildHiddenLayers(self, inp, nlayers, paramname, evaluation=False, normalization=True, modifiedBatchNorm=False):
         """
@@ -795,7 +796,7 @@ class LogGammaSemiVAE(BaseModel, object):
                                                         reg_value= self.params['reg_value'],
                                                        grad_norm = grad_norm, 
                                                        divide_grad = divide_grad) 
-        #self.updates is container for all updates (e.g. see _BNlayer in __init__.py)
+        #self.updates is container for all updates (e.g. see _BNlayer in BaseModel)
         self.updates += optimizer_up+annealKL_Z_update+annealKL_alpha_update+annealCW_update+ctr_update+annealBP_update
         
         #Build theano functions
