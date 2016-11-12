@@ -6,7 +6,6 @@ from parse_args import params
 import ipdb
 
 dataset = 'mnist'
-params['savedir']+='-'+dataset
 createIfAbsent(params['savedir'])
 dataset = loadDataset(dataset)
 
