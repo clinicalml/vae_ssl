@@ -1,9 +1,11 @@
 import sys
 import os
 
-def launchfile(instructions,jobname,launchdir,memory=20,walltime=12,exports=''):
+def launchfile(instructions,jobname,launchdir,memory=20,walltime=12,exports='',sourcedir=None):
 	stdout = os.path.join(launchdir,jobname,'job.out')
 	rundir = os.path.join(launchdir,jobname,'theanomodels')
+	if sourcedir is None:
+		sourcedir = os.getcwd()
 	qsub = """#!/bin/bash
 #PBS -l nodes=1:ppn=1:gpus=1
 #PBS -l walltime={walltime}:00:00
@@ -21,7 +23,7 @@ module load theano/0.8.2
 module load ipdb/0.8
 module load scipy/intel/0.18.0
 
-SOURCEDIR=/home/jmj418/theanomodels/
+SOURCEDIR={sourcedir}
 mkdir -p {rundir}
 cp -R $SOURCEDIR/* {rundir}
 cd {rundir}

@@ -15,7 +15,7 @@ from theanomodels.utils.misc import saveHDF5
 from randomvariates import randomLogGamma
 from special import Psi, Polygamma
 from theanomodels.models import BaseModel
-from vae_ssl_LogGamma import LogGammaSemiVAE
+from LogGamma import LogGammaSemiVAE
 import ipdb
 
 class SemiVAE(LogGammaSemiVAE):

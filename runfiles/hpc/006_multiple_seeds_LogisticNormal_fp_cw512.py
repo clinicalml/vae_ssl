@@ -2,8 +2,8 @@ import os
 import runhpc
 
 exptdir = '006_multiple_seeds_LN_fp_cw512'
-script = 'expt-ssl/train_ssl_vae_mnist.py'
-rootdir = '/scratch/jmj418/theanomodels/experiments/mnist_ssl_vae'
+script = 'train.py'
+rootdir = 'output'
 session = exptdir
 savedir = os.path.join(rootdir,exptdir)
 
@@ -31,7 +31,7 @@ run_flags=['--savedir=%s'%savedir,
            #'-seed 1',
            '-rv 0.1']
 var_flags = {
-		'seed1':'-seed 1',
+		#'seed1':'-seed 1',
 		'seed2':'-seed 2',
 		'seed3':'-seed 3',
 		'seed4':'-seed 4',
