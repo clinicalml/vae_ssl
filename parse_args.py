@@ -26,7 +26,8 @@ parser.add_argument('-finalbeta','--finalbeta', action='store', default = 0.2, h
 parser.add_argument('-annealBP','--annealBP', action='store', default = 1., help='dirichlet prior annealing', type=float)
 parser.add_argument('-betamax','--betamax', action='store', default = 10.0, help='setting for MixDirPrior model', type=float)
 parser.add_argument('-logp_S','--logp_S', action='store', default = 100, help='setting for MixDirPrior model', type=int)
-parser.add_argument('-sharpening','--sharpening', action='store', default = 1., help='dirichlet sharpening', type=float)
+parser.add_argument('-sharpening','--sharpening', action='store', default = 1., help='softmax sharpening', type=float)
+parser.add_argument('-annealSharpening','--annealSharpening', action='store', default = 1., help='anneal sharpening', type=float)
 parser.add_argument('-no_softmax','--no_softmax', action='store', default = False, help='Dont use softmax for alpha in VAE, but still use it in classifier', type=bool)
 parser.add_argument('-kllg','--KL_loggamma_coef', action='store', default = 1.0, help='Coefficient multiplier to the KL of the loggamma RVs', type=float)
 parser.add_argument('-mbw','--maxBetaWeight', action='store', default = 0., help='Coefficient multiplier to the distance between max logbeta and second max logbeta in U', type=float)
@@ -51,7 +52,7 @@ parser.add_argument('-sbn','--separateBNrunningstats', action='store',default = 
 parser.add_argument('-ln','--layernorm', action='store',default = False, help='Layer Normalization',type=bool)
 parser.add_argument('-pn','--p_normlayers', action='store',default = False, help='Allow normalization layers in Generative Model', type=bool)
 
-parser.add_argument('-model','--model',action='store',default='LogGamma',help='choose type of graphical model',choices=['LogGamma','exactM2','approxM2','MixDirPrior','LogisticNormal','LogisticNormalMP','DirichletMixture','Dirichlet2','LogGammaMixture','LogGammaLatentMixture','LogGammaReverse','DirichletSeparate','LogisticNormal_fp','GM','GM2','LNprd'])
+parser.add_argument('-model','--model',action='store',default='LogGamma',help='choose type of graphical model',choices=['LogGamma','exactM2','approxM2','MixDirPrior','LogisticNormal','LogisticNormalMP','DirichletMixture','Dirichlet2','LogGammaMixture','LogGammaLatentMixture','LogGammaReverse','DirichletSeparate','LogisticNormal_fp','GM','GM2','LNprd','GumbelSoftmaxM2','STGumbelSoftmaxM2','LogisticNormalM2','STLogisticNormalM2','GumbelSoftmax','STGumbelSoftmax','LogisticNormal_warped','STLogisticNormal_warped'])
 parser.add_argument('-lnmp','--LogitNormalMP',action='store',default=3.,help='LogitNormalMP coefficient',type=float)
 parser.add_argument('-lpr','--learn_prior',action='store',default=False,help='LogGammaMixture learn prior',type=bool)
 parser.add_argument('-lpo','--learn_posterior',action='store',default=False,help='learn posterior (model-specific implementations)',type=bool)

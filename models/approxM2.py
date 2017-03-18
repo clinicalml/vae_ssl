@@ -23,7 +23,8 @@ class SemiVAE(LogGammaSemiVAE):
     def __init__(self,params,paramFile=None,reloadFile=None):
         super(SemiVAE,self).__init__(params,paramFile=paramFile,reloadFile=reloadFile)
 
-    def _buildGraph(self, X, eps, betaprior=0.2, Y=None, dropout_prob=0.,add_noise=False,annealKL=None,evaluation=False,modifiedBatchNorm=False,graphprefix=None):
+    def _buildGraph(self, X, eps, betaprior=0.2, Y=None, dropout_prob=0.,add_noise=False,annealKL_alpha=None,annealKL_Z=None,evaluation=False,modifiedBatchNorm=False,graphprefix=None):
+        annealKL = None
         """
                                 Build VAE subgraph to do inference and emissions
                 (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)

@@ -33,6 +33,21 @@ elif params['model'] == 'approxM2':
 elif params['model'] == 'exactM2':
     from models.exactM2 import ExactSemiVAE
     SSL_VAE_CLASS = ExactSemiVAE
+elif params['model'] == 'exactM2_debug':
+    from models.vae_ssl_exactM2 import ExactSemiVAE
+    SSL_VAE_CLASS = ExactSemiVAE
+elif params['model'] in ['GumbelSoftmaxM2','STGumbelSoftmaxM2']:
+    from models.GumbelSoftmaxM2 import SemiVAE
+    SSL_VAE_CLASS = SemiVAE
+elif params['model'] in ['GumbelSoftmax','STGumbelSoftmax']:
+    from models.GumbelSoftmax import GumbelSoftmax 
+    SSL_VAE_CLASS = GumbelSoftmax
+elif params['model'] in ['LogisticNormalM2','STLogisticNormalM2']:
+    from models.LogisticNormalM2 import LogisticNormalM2 
+    SSL_VAE_CLASS = LogisticNormalM2 
+elif params['model'] in ['LogisticNormal_warped','STLogisticNormal_warped']:
+    from models.LogisticNormal_warped import LogisticNormal 
+    SSL_VAE_CLASS = LogisticNormal
 elif params['model'] == 'MixDirPrior':
     from models.MixDirPrior import MixDirPriorSemiVAE
     SSL_VAE_CLASS = MixDirPriorSemiVAE 

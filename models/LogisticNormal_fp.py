@@ -181,7 +181,7 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         logcov  = self._LinearNL(self.tWeights['q_Z_logcov_W'],self.tWeights['q_Z_logcov_b'],q_Z_hidden,onlyLinear=True)
         return mu, logcov
 
-    def _buildGraph(self, X, eps, betaprior=0.2, Y=None, dropout_prob=0.,add_noise=False,annealKL=None,evaluation=False,modifiedBatchNorm=False,graphprefix=None):
+    def _buildGraph(self, X, eps, betaprior=0.2, Y=None, dropout_prob=0.,add_noise=False,annealKL_Z=None,annealKL_alpha=None,evaluation=False,modifiedBatchNorm=False,graphprefix=None):
         """
                                 Build VAE subgraph to do inference and emissions
                 (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
@@ -204,17 +204,11 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         self._addVariable(graphprefix+'_Z2_logcov2'+suffix,logcov2_Z2,ignore_warnings=True)
         eps2 = self.srng.normal(mu_Z2.shape,1,dtype=config.floatX)
         Z2, KL_Z2 = self._variationalGaussian(mu_Z2,logcov2_Z2,eps2)
-        if add_noise:
-            Z2 = Z2 + self.srng.normal(Z2.shape,0,0.05,dtype=config.floatX)
-        if self.params['no_softmax']:
-            alpha = Z2
-        else:
-            if self.params['sharpening'] != 1:
-                alpha = T.nnet.softmax(Z2*self.params['sharpening'])
-            else:
-                alpha = T.nnet.softmax(Z2)
-        if Y!=None:
-            nllY = T.nnet.categorical_crossentropy(T.nnet.softmax(Z2),Y)
+        #if add_noise:
+        #    Z2 = Z2 + self.srng.normal(Z2.shape,0,0.05,dtype=config.floatX)
+        alpha = T.nnet.softmax(Z2*self.tWeights['sharpening'])
+        if Y is not None:
+            nllY = T.nnet.categorical_crossentropy(alpha,Y)
         
         mu, logcov = self._build_qz(alpha,hx,evaluation,modifiedBatchNorm,graphprefix)
         self._addVariable(graphprefix+'_mu'+suffix,mu,ignore_warnings=True)
@@ -239,10 +233,13 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         if evaluation:
             objfunc = bound
         else:
-            if annealKL == None:
-                objfunc = bound
-            else:
-                objfunc = annealKL*KL + NLL
+            _KL_Z = KL_Z.sum()
+            _KL_Z2 = self.params['KL_loggamma_coef']*KL_Z2.sum()
+            if annealKL_Z is not None:
+                _KL_Z = annealKL_Z*_KL_Z
+            if annealKL_alpha is not None:
+                _KL_Z2 = annealKL_alpha*_KL_Z2
+            objfunc = _KL_Z + _KL_Z2 + NLL
 
         outputs = {'alpha':alpha,
                    'Z':Z,
@@ -267,12 +264,12 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         else:
             eps2 = self.srng.normal(mu_Z2.shape,1,dtype=config.floatX)
             Z2, KL_Z2 = self._variationalGaussian(mu_Z2,logcov2_Z2,eps2)
-            if add_noise:
-                Z2 = Z2 + self.srng.normal(Z2.shape,0,0.05,dtype=config.floatX)
-            if self.params['sharpening'] != 1:
-                alpha = T.nnet.softmax(Z2*self.params['sharpening'])
-            else:
-                alpha = T.nnet.softmax(Z2)
+            #if add_noise:
+            #    Z2 = Z2 + self.srng.normal(Z2.shape,0,0.05,dtype=config.floatX)
+            #if self.params['sharpening'] != 1:
+            #    alpha = T.nnet.softmax(Z2*self.params['sharpening'])
+            #else:
+            alpha = T.nnet.softmax(Z2)
         #T.nnet.categorical_crossentropy returns a vector of length batch_size
         probs = alpha
         loss= T.nnet.categorical_crossentropy(probs,Y)
@@ -328,23 +325,47 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         #Learning Rates and annealing objective function
         #Add them to npWeights/tWeights to be tracked [do not have a prefix _W or _b so wont be diff.]
         self._addWeights('lr', np.asarray(self.params['lr'],dtype=config.floatX),borrow=False)
-        self._addWeights('annealKL', np.asarray(0.,dtype=config.floatX),borrow=False)
+        self._addWeights('annealKL_Z', np.asarray(0.,dtype=config.floatX),borrow=False)
+        self._addWeights('annealKL_alpha', np.asarray(0.,dtype=config.floatX),borrow=False)
         self._addWeights('annealCW', np.asarray(0.,dtype=config.floatX),borrow=False)
+        self._addWeights('annealBP', np.asarray(0.,dtype=config.floatX),borrow=False)
+        self._addWeights('annealBound', np.asarray(0.,dtype=config.floatX),borrow=False)
         self._addWeights('update_ctr', np.asarray(1.,dtype=config.floatX),borrow=False)
 
         lr  = self.tWeights['lr']
-        annealKL = self.tWeights['annealKL']
+        annealKL_Z = self.tWeights['annealKL_Z']
+        annealKL_alpha = self.tWeights['annealKL_alpha']
         annealCW = self.tWeights['annealCW']
-        iteration_t    = self.tWeights['update_ctr']
-        if 'annealKL' not in self.params:
-            self.params['annealKL'] = self.params['annealKL_alpha']
-
+        annealBP = self.tWeights['annealBP']
+        annealBound = self.tWeights['annealBound']
+        iteration_t    = self.tWeights['update_ctr'] 
+        
         lr_update = [(lr,T.switch(lr/1.0005<1e-4,lr,lr/1.0005))]
-        annealKL_div     = float(self.params['annealKL']) #50000.
+        annealKL_Z_div     = float(self.params['annealKL_Z']) #50000.
+        annealKL_alpha_div     = float(self.params['annealKL_alpha']) #50000.
         annealCW_div     = float(self.params['annealCW']) #50000.
+        annealBP_div     = float(self.params['annealBP']) #50000.
+        annealBound_div  = float(self.params['annealBound']) #50000.
+        finalbeta        = float(self.params['finalbeta'])
         ctr_update = [(iteration_t, iteration_t+1)]
-        annealKL_update  = [(annealKL,T.switch(iteration_t/annealKL_div>1,1.,0.01+iteration_t/annealKL_div))]
+        annealKL_Z_update  = [(annealKL_Z,T.switch(iteration_t/annealKL_Z_div>1,1.,0.01+iteration_t/annealKL_Z_div))]
+        annealKL_alpha_update  = [(annealKL_alpha,T.switch(iteration_t/annealKL_Z_div>1,1.,0.01+iteration_t/annealKL_Z_div))]
         annealCW_update  = [(annealCW,T.switch(iteration_t/annealCW_div>1,1.,0.01+iteration_t/annealCW_div))]
+        annealBP_update  = [(annealBP,T.switch(iteration_t/annealBP_div>1,1.,0.01+iteration_t/annealBP_div))]
+        annealBound_update  = [(annealBound,T.switch(iteration_t/annealBound_div>1,1.,0.01+iteration_t/annealBound_div))]
+        self.updates += annealKL_Z_update+annealKL_alpha_update+annealCW_update+ctr_update+annealBP_update+annealBound_update
+
+        #betaprior = (self.params['betaprior']**(1-annealBP))*(self.params['finalbeta']**annealBP)
+        betaprior = self.params['betaprior']*(1-annealBP) + self.params['finalbeta']*annealBP
+
+        self._addWeights('sharpening',np.asarray(float(self.params['sharpening'])/2.,dtype=config.floatX),borrow=False)
+        self._addWeights('annealSharpening', np.asarray(0.,dtype=config.floatX),borrow=False)
+        annealSharpening = self.tWeights['annealSharpening']
+        annealSharpening_div = float(self.params['annealSharpening'])
+        annealSharpening_update = [(annealSharpening,T.switch(iteration_t/annealSharpening_div>1,1.,0.01+iteration_t/annealSharpening_div))]
+        sharpening = self.tWeights['sharpening']
+        sharpening_update = [(sharpening,self.params['sharpening']*0.5*(1.+annealSharpening))]
+        self.updates += annealSharpening_update+sharpening_update
 
         Y_onehot = T.extra_ops.to_one_hot(Y,self.params['nclasses'],dtype=config.floatX)
         meanAbsDev = 0
@@ -352,22 +373,24 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         graphprefixU = 'U'
         graphprefixL = 'L'
         graphprefixC = 'q(y|x)'
-        #_,_,_,boundU_t,objfuncU_t=self._buildGraph(XU,epsU,self.params['betaprior'],
-        outputsU_t = self._buildGraph(XU,epsU,self.params['betaprior'],
+        #_,_,_,boundU_t,objfuncU_t=self._buildGraph(XU,epsU,betaprior,
+        outputsU_t = self._buildGraph(XU,epsU,betaprior,
                                       Y=None,
                                       dropout_prob=self.params['input_dropout'],
                                       add_noise=True,
-                                      annealKL=annealKL,
+                                      annealKL_Z=annealKL_Z,
+                                      annealKL_alpha=annealKL_alpha,
                                       evaluation=False,
                                       modifiedBatchNorm=False,
                                       graphprefix=graphprefixU)#use BN stats from U for L
         boundU_t = outputsU_t['bound']
         objfuncU_t = outputsU_t['objfunc']
-        outputsL_t = self._buildGraph(XL,epsL,self.params['betaprior'],
+        outputsL_t = self._buildGraph(XL,epsL,betaprior,
                                       Y=Y_onehot,
                                       dropout_prob=self.params['input_dropout'],
                                       add_noise=True,
-                                      annealKL=annealKL,
+                                      annealKL_Z=annealKL_Z,
+                                      annealKL_alpha=annealKL_alpha,
                                       evaluation=False,
                                       modifiedBatchNorm=self.params['modifiedBatchNorm'],
                                       graphprefix=graphprefixL)
@@ -388,20 +411,18 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         trainobj_components = [objfuncU_t.sum(),objfuncL_t.sum(),self.params['classifier_weight']*crossentropyloss_t.sum()]
 
         #Build evaluation graph
-        outputsU_e = self._buildGraph(XU,epsU,self.params['betaprior'],
+        outputsU_e = self._buildGraph(XU,epsU,betaprior,
                                       Y=None,
                                       dropout_prob=0.,
                                       add_noise=False,
-                                      annealKL=None,
                                       evaluation=True,
                                       graphprefix=graphprefixU)
         boundU_e = outputsU_e['bound']
         objfuncU_e = outputsU_e['objfunc']
-        outputsL_e = self._buildGraph(XL,epsL,self.params['betaprior'],
+        outputsL_e = self._buildGraph(XL,epsL,betaprior,
                                       Y=Y_onehot,
                                       dropout_prob=0.,
                                       add_noise=False,
-                                      annealKL=None,
                                       evaluation=True,
                                       modifiedBatchNorm=self.params['modifiedBatchNorm'],
                                       graphprefix=graphprefixL)
@@ -443,7 +464,7 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
                                                        grad_norm = grad_norm,
                                                        divide_grad = divide_grad)
         #self.updates is container for all updates (e.g. see _BNlayer in BaseModel)
-        self.updates += optimizer_up+annealKL_update+annealCW_update+ctr_update
+        self.updates += optimizer_up
 
         #Build theano functions
         fxn_inputs = [XU,XL,Y,epsU,epsL]
@@ -458,13 +479,19 @@ class LogisticNormalSemiVAE(LogGammaSemiVAE):
         outputs_train = {'cost':trainloss,
                          'ncorrect':ncorrect_t,
                          'bound':trainbound,
-                         'annealKL':annealKL.sum(),
-                         'annealKL_alpha':annealKL.sum(),
-                         'annealKL_Z':annealKL.sum(),
+                         'annealKL_Z':annealKL_Z.sum(),
+                         'annealKL_alpha':annealKL_alpha.sum(),
+                         'annealBound':annealBound.sum(),
                          'annealCW':annealCW.sum(),
+                         'annealBP':annealBP.sum(),
+                         'annealSharpening':annealSharpening.sum(),
+                         'sharpening':sharpening.sum(),
+                         'betaprior':betaprior.reshape((1,1)),
                          'boundU':trainboundU,
                          'boundL':trainboundL,
                          'classification_loss':trainclassifier,
+                         'pnorm':norm_list[0],
+                         'gnorm':norm_list[1],
                          }
         for k,v in self._getModelOutputs(outputsU_t,outputsL_t,suffix='_t').iteritems():
             outputs_train[k] = v

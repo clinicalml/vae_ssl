@@ -484,8 +484,8 @@ class LogGammaSemiVAE(BaseModel, object):
         #U = loggamma variates
         U, KL_loggamma = self._variationalLoggamma(beta,betaprior)
         #convert to Dirichlet (with sharpening)
-        if self.params['sharpening'] != 1:
-            alpha = T.nnet.softmax(U*self.params['sharpening'])
+        if self.tWeights['sharpening'] != 1:
+            alpha = T.nnet.softmax(U*self.tWeights['sharpening'])
         else:
             alpha = T.nnet.softmax(U)
         return alpha, KL_loggamma
@@ -524,26 +524,13 @@ class LogGammaSemiVAE(BaseModel, object):
                 #U = loggamma variates
                 U, KL_loggamma = self._variationalLoggamma(beta,betaprior)
                 #convert to Dirichlet (with sharpening)
-                if self.params['sharpening'] != 1:
-                    alpha = T.nnet.softmax(U*self.params['sharpening'])
-                else:
-                    alpha = T.nnet.softmax(U)
+                alpha = T.nnet.softmax(U*self.tWeights['sharpening'])
         else:
             #U = loggamma variates
             U, KL_loggamma = self._variationalLoggamma(beta,betaprior)
             #convert to Dirichlet (with sharpening)
-            if self.params['sharpening'] != 1:
-                alpha = T.nnet.softmax(U*self.params['sharpening'])
-            else:
-                alpha = T.nnet.softmax(U)
+            alpha = T.nnet.softmax(U*self.tWeights['sharpening'])
 
-        #U = loggamma variates
-        #U, KL_loggamma = self._variationalLoggamma(beta,betaprior)
-        #convert to Dirichlet (with sharpening)
-        #if self.params['sharpening'] != 1:
-        #    alpha = T.nnet.softmax(U*self.params['sharpening'])
-        #else:
-        #    alpha = T.nnet.softmax(U)
         # q(z|x,alpha)
         mu, logcov = self._build_qz(alpha,hx,evaluation,modifiedBatchNorm,graphprefix) 
         self._addVariable(graphprefix+'_mu'+suffix,mu,ignore_warnings=True)
@@ -697,9 +684,20 @@ class LogGammaSemiVAE(BaseModel, object):
         annealCW_update  = [(annealCW,T.switch(iteration_t/annealCW_div>1,1.,0.01+iteration_t/annealCW_div))]
         annealBP_update  = [(annealBP,T.switch(iteration_t/annealBP_div>1,1.,0.01+iteration_t/annealBP_div))]
         annealBound_update  = [(annealBound,T.switch(iteration_t/annealBound_div>1,1.,0.01+iteration_t/annealBound_div))]
+        self.updates += annealKL_Z_update+annealKL_alpha_update+annealCW_update+ctr_update+annealBP_update+annealBound_update
 
         #betaprior = (self.params['betaprior']**(1-annealBP))*(self.params['finalbeta']**annealBP)
         betaprior = self.params['betaprior']*(1-annealBP) + self.params['finalbeta']*annealBP
+
+        self._addWeights('sharpening',np.asarray(float(self.params['sharpening'])/2.,dtype=config.floatX),borrow=False)
+        self._addWeights('annealSharpening', np.asarray(0.,dtype=config.floatX),borrow=False)
+        annealSharpening = self.tWeights['annealSharpening']
+        annealSharpening_div = float(self.params['annealSharpening'])
+        annealSharpening_update = [(annealSharpening,T.switch(iteration_t/annealSharpening_div>1,1.,0.01+iteration_t/annealSharpening_div))]
+        sharpening = self.tWeights['sharpening']
+        sharpening_update = [(sharpening,self.params['sharpening']*0.5*(1.+annealSharpening))]
+        self.updates += annealSharpening_update+sharpening_update
+
 
         Y_onehot = T.extra_ops.to_one_hot(Y,self.params['nclasses'],dtype=config.floatX)
         meanAbsDev = 0
@@ -797,7 +795,7 @@ class LogGammaSemiVAE(BaseModel, object):
                                                        grad_norm = grad_norm, 
                                                        divide_grad = divide_grad) 
         #self.updates is container for all updates (e.g. see _BNlayer in BaseModel)
-        self.updates += optimizer_up+annealKL_Z_update+annealKL_alpha_update+annealCW_update+ctr_update+annealBP_update
+        self.updates += optimizer_up
         
         #Build theano functions
         fxn_inputs = [XU,XL,Y,epsU,epsL]
@@ -817,10 +815,14 @@ class LogGammaSemiVAE(BaseModel, object):
                          'annealBound':annealBound.sum(),
                          'annealCW':annealCW.sum(),
                          'annealBP':annealBP.sum(),
+                         'annealSharpening':annealSharpening.sum(),
+                         'sharpening':sharpening.sum(),
                          'betaprior':betaprior.reshape((1,1)),
                          'boundU':trainboundU,
                          'boundL':trainboundL,
                          'classification_loss':trainclassifier,
+                         'pnorm':norm_list[0],
+                         'gnorm':norm_list[1],
                          }
         for k,v in self._getModelOutputs(outputsU_t,outputsL_t,suffix='_t').iteritems():
             outputs_train[k] = v
@@ -1045,6 +1047,7 @@ class LogGammaSemiVAE(BaseModel, object):
                     batch_bound = batch_outputs['bound']
                     annealKL = batch_outputs['annealKL_alpha']
                     annealCW = batch_outputs['annealCW']
+                    sharpening = batch_outputs['sharpening']
                     batch_boundU = batch_outputs['boundU']
                     batch_boundL = batch_outputs['boundL']
                     batch_classifier = batch_outputs['classification_loss']
@@ -1076,8 +1079,8 @@ class LogGammaSemiVAE(BaseModel, object):
  #               classifier += batch_classifier
  #               ncorrect += batch_ncorrect
                 if bnum%100==0:
-                    self._p(('--Batch: %d, Batch Loss: %.2f, Accuracy: %.3f, Anneal [KL,CW]: [%.2f,%0.2f] Lr: %.2e--')%
-                            (bnum, batch_cost/Nbatch, batch_ncorrect/float(Nbatch), annealKL,annealCW, current_lr))
+                    self._p(('--Batch: %d, Batch Loss: %.2f, Accuracy: %.3f, Anneal [KL,CW,SH]: [%.2f,%0.2f,%0.2f] Lr: %.2e--')%
+                            (bnum, batch_cost/Nbatch, batch_ncorrect/float(Nbatch), annealKL,annealCW,sharpening, current_lr))
                 
 #            bound /= float(N)
 #            cost /= float(N)
