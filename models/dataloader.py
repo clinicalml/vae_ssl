@@ -3,7 +3,7 @@ import numpy as np
 class DataLoader:
 
     def __init__(self,data,batchsize=1,shuffle=True):
-        self.data = np.array(data)
+        self.data = data 
         self.N = len(self.data)
         self.batchsize = batchsize
         self.__i = 0

@@ -1,4 +1,4 @@
-class Namespace(dict):
+class Namespace(dict,object):
 
     def __init__(self, data={}, convert_children=True, **kwargs):
 		"""
@@ -23,21 +23,27 @@ class Namespace(dict):
 		>> type(y[(1,1)])
 		__main__.Namespace
 		"""
-        super(Namespace,self).__init__(data,**kwargs)
-        if convert_children:
-            def _apply_func(d):
-                if isinstance(d,dict):
-                    return Namespace(d,convert_children=True)
-                else:
-                    return d
-            temp = self.apply(_apply_func)
-            for k in temp.keys():
-                self[k] = temp[k]
-    
+		super(Namespace,self).__init__(data,**kwargs)
+		if convert_children:
+			def _apply_func(d):
+				if isinstance(d,dict):
+					return self.__recreate__(d,convert_children=True)
+				else:
+					return d
+			temp = self.apply(_apply_func)
+			for k in temp.keys():
+				self[k] = temp[k]
+
+    def __recreate__(self,*args,**kwargs):
+		"""
+		use this to recreate myself
+		"""
+		return self.__class__(*args,**kwargs)
+
     def __setitem__(self, key, item):
-        super(Namespace,self).__setitem__(key,item)
-        if isinstance(item, Namespace):
-            item._set_parent(self,key)
+		super(Namespace,self).__setitem__(key,item)
+		if isinstance(item, Namespace):
+			item._set_parent(self,key)
 
     def _set_parent(self,parent_obj,parent_key):
         self._parent_obj = parent_obj
@@ -52,22 +58,31 @@ class Namespace(dict):
 		>> x[1][2].path()
 		[1,2]
 		"""
-        if hasattr(self,'_parent_key'):
-            return self._parent_obj.path()+[self._parent_key]
-        else:
-            return []
+		if hasattr(self,'_parent_key'):
+			return self._parent_obj.path()+[self._parent_key]
+		else:
+			return []
+
+    def __repr_header__(self):
+		name = self.__class__.__name__
+		return name + '{'
+
+    def __repr_leveled__(self,level=0):
+		indent='  '*level
+		r = {}
+		for k,v in self.iteritems():
+			if isinstance(v,Namespace):
+				r[k] = v.__repr_leveled__(level+1)
+			else:
+				if hasattr(v,'__repr__'):
+					r[k] = v.__repr__()
+				else:
+					r[k] = v
+		header = self.__repr_header__()
+		return header+'\n'+('\n'.join('%s%s: %s' % (indent+' ',k,v) for k,v in r.iteritems()))+'\n%s}'%indent
     
     def __repr__(self):
-        def _repr_func(d,level=0):
-            indent='  '*level
-            r = {}
-            for k,v in d.iteritems():
-                if isinstance(v,dict):
-                    r[k] = _repr_func(v,level+1)
-                else:
-                    r[k] = v
-            return '{\n'+('\n'.join('%s%s: %s' % (indent+' ',k,v) for k,v in r.iteritems()))+'\n%s}'%indent
-        return _repr_func(self)
+        return self.__repr_leveled__()
         
     def walk(self):
 		"""
@@ -89,16 +104,16 @@ class Namespace(dict):
 		((1, 1), 2, 3) 4
 		((1, 1), 2, 5) 6
 		"""
-        def _walk(d,path=[]):
-            for k in d.keys():
-                path=path+[k]
-                if isinstance(d[k],dict):
-                    for sub in _walk(d[k],path):
-                        yield sub
-                else:
-                    yield tuple(path),d[k]
-        for sub in _walk(self):
-            yield sub
+		def _walk(d,path=[]):
+			for k in d.keys():
+				path=path+[k]
+				if isinstance(d[k],dict):
+					for sub in _walk(d[k],path):
+						yield sub
+				else:
+					yield tuple(path),d[k]
+		for sub in _walk(self):
+			yield sub
 
     def flatten(self,join=None):
 		"""
@@ -106,17 +121,17 @@ class Namespace(dict):
 		 join: {str,None}, when join is not None, keypath elements are converted to string and joined by '/'
 		 e.g. Namespace({'a':{'b':1}}) becomes Namespace({'a/b':1})
 		"""
-        if join:
-            assert isinstance(join,str),'join must be a type of string'
-            return Namespace({join.join(k):v for k,v in self.apply(str,nodes=True).walk()})
-        else:
-            return Namespace(self.walk())
+		if join:
+			assert isinstance(join,str),'join must be a type of string'
+			return self.__recreate__({join.join(k):v for k,v in self.apply(str,keys=True).walk()})
+		else:
+			return self.__recreate__(self.walk())
         
     def leaves(self):
 		"""
 		returns all leaves in Namespace flattened into a list
 		"""
-        return zip(*self.walk())[1]
+		return zip(*self.walk())[1]
 
     def updatepath(self,keypath,value):
 		"""
@@ -132,18 +147,26 @@ class Namespace(dict):
 		  }
 		}
 		"""
-        k = keypath[0]
-        if len(keypath) > 1:
-            if k not in self.keys():
-                self[k] = Namespace()
-            self[k].updatepath(keypath[1:],value)
-        else:
-            self[k] = value	
+		k = keypath[0]
+		if len(keypath) > 1:
+			if k not in self.keys():
+				self[k] = self.__recreate__()
+			self[k].updatepath(keypath[1:],value)
+		else:
+			self[k] = value	
+
+    def cascade(self,func,*args,**kwargs):
+		d1 = self
+		d2 = self.__recreate__(convert_children=False)
+		for k in self.keys():
+			d2[k] = func(d1[k],*args,**kwargs)
+		return d2
+			
             
-    def apply(self,func,nodes=False,*args,**kwargs):
+    def apply(self,func,keys=False,*args,**kwargs):
 		"""
 		recursively apply func to Namespace
-		nodes: {True,False} defaults to False, if True, apply func to nodes, else apply func to leaves
+		keys: {True,False} defaults to False, if True, apply func to keys, else apply func to leaves
 		*args, **kwargs: args and kwargs of func
 		e.g.
 		>> Namespace({(1,1):{2:{3:4,5:6},'a':9}}).apply(lambda x: 2*x)
@@ -156,7 +179,7 @@ class Namespace(dict):
 			}
 		  }
 		}
-		>> Namespace({(1,1):{2:{3:4,5:6},'a':9}}).apply(lambda x: str(x)+'!',nodes=True)
+		>> Namespace({(1,1):{2:{3:4,5:6},'a':9}}).apply(lambda x: str(x)+'!',keys=True)
 		{
 		 (1, 1)!: {
 		   a!: 9
@@ -167,21 +190,19 @@ class Namespace(dict):
 		  }
 		}
 		"""
-        def _apply(d1,func,*args,**kwargs):
-            d2 = Namespace(convert_children=False)
-            for k1 in d1.keys():
-                if nodes:
-                    k2 = func(k1)
-                else:
-                    k2 = k1
-                if isinstance(d1[k1],Namespace):
-                    d2[k2] = _apply(d1[k1],func,*args,**kwargs)
-                else:
-                    if nodes:
-                        d2[k2] = d1[k1]
-                    else:
-                        d2[k2] = func(d1[k1],*args,**kwargs)
-            return d2
-        return _apply(self,func,*args,**kwargs)
+		d1 = self
+		d2 = self.__recreate__(convert_children=False)
+		for k1 in self.keys():
+			if keys:
+				k2 = func(k1)
+			else:
+				k2 = k1
+			if isinstance(d1[k1],Namespace):
+				d2[k2] = d1[k1].apply(func,keys,*args,**kwargs)
+			else:
+				if keys:
+					d2[k2] = d1[k1]
+				else:
+					d2[k2] = func(d1[k1],*args,**kwargs)
+		return d2
 
-        

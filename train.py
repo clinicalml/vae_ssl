@@ -1,22 +1,20 @@
 import os,time
 import numpy as np
 from theanomodels.datasets.load import loadDataset
-from theanomodels.utils.misc import removeIfExists,createIfAbsent,mapPrint,saveHDF5,displayTime
+from theanomodels.utils.misc import removeIfExists,createIfAbsent,displayTime
 from parse_args import params 
-import ipdb
+from datasets import SemiSupervisedMNIST
 
-dataset = 'mnist'
-createIfAbsent(params['savedir'])
-dataset = loadDataset(dataset)
+start_time = time.time()
+os.system('mkdir -p %s' % params['savedir'])
+dataset = SemiSupervisedMNIST(labeled_per_class=params['nlabelsperclass'])
+params['nclasses'] = dataset.nclasses
+params['dim_observations'] = dataset.dim_observations
 
-#Saving/loading
-for k in ['dim_observations','data_type']:
-    params[k] = dataset[k]
-mapPrint('Options: ',params)
+for k in sorted(params):
+	print '%s: %s' % (k,params[k])
 
 #Setup VAE Model (or reload from existing savefile)
-start_time = time.time()
-vae    = None
 
 if params['model'] == 'LogGamma':
     from models.LogGamma import LogGammaSemiVAE
@@ -73,10 +71,7 @@ elif params['model'] == 'LogisticNormal':
     from models.LogisticNormal import LogisticNormalSemiVAE 
     SSL_VAE_CLASS = LogisticNormalSemiVAE 
 elif params['model'] == 'LogisticNormal_fp':
-    if params['modifiedBatchNorm']:
-        from models.LogisticNormal_fp_mbn import LogisticNormalSemiVAE 
-    else:
-        from models.LogisticNormal_fp import LogisticNormalSemiVAE 
+	from models.LogisticNormal_fp import LogisticNormalSemiVAE 
     SSL_VAE_CLASS = LogisticNormalSemiVAE 
 elif params['model'] == 'LNprd':
     from models.LogisticNormal_prod import LogisticNormalSemiVAE 
@@ -88,78 +83,22 @@ else:
     raise NameError('unhandled model type: %s' % params['model'])
 displayTime('import vae_ssl',start_time, time.time())
 
-#Remove from params
 start_time = time.time()
-removeIfExists('./NOSUCHFILE')
-reloadFile = params.pop('reloadFile')
-savef      = os.path.join(params['savedir'],params['unique_id'],'seed-%s'%params['seed']) 
-os.system('mkdir -p %s' % savef)
-if os.path.exists(reloadFile):
-    pfile=params.pop('paramFile')
-    assert os.path.exists(pfile),pfile+' not found. Need paramfile'
-    print 'Reloading trained model from : ',reloadFile
-    print 'Assuming ',pfile,' corresponds to model'
-    vae  = SSL_VAE_CLASS(params, paramFile = pfile, reloadFile = reloadFile) 
-else:
-    pfile= os.path.join(savef,'config.pkl')
-    print 'Training model from scratch. Parameters in: ',pfile
-    vae  = SSL_VAE_CLASS(params, paramFile = pfile)
+reloadDir = params['reloadDir']
+configFile = os.path.join(params['savedir'],params['configFile'])
+vae = SSL_VAE_CLASS(params, configFile, reloadDir) 
 displayTime('Building vae_ssl',start_time, time.time())
 
 start_time = time.time()
-
-replicate_K = 1
-
-trainData = dataset['train'];validData = dataset['valid']
-
-print 'setting numpy random seed to %s' % (params['seed']*10)
-np.random.seed(params['seed']*10)
-X = dataset['train']
-Y = dataset['train_y'].astype('int32')
-classes = range(params['nclasses'])
-XL = []; YL = [];
-for c in classes:
-    sel = Y == c
-    nc = sel.sum()
-    Xc = X[sel]
-    Yc = Y[sel]
-    idx = np.arange(nc)
-    np.random.shuffle(idx)
-    Xc = Xc[idx[:params['nlabelsperclass']]]
-    Yc = Yc[idx[:params['nlabelsperclass']]]
-    XL.append(Xc)
-    YL.append(Yc)
-XL = np.vstack(XL)
-YL = np.hstack(YL)
-trainData = {'XU':X,'XL':XL,'YL':YL,'YU':Y}
-validData = {'X':dataset['valid'],'Y':dataset['valid_y']}
-testData = {'X':dataset['test'],'Y':dataset['test_y']}
-
-savedata, samples = vae.learn(  trainData,
-                                epoch_start=0 , 
-                                epoch_end  = params['epochs'], 
-                                batch_size = params['batch_size'],
-                                savefreq   = params['savefreq'],
-                                evalfreq   = params['evalfreq'],
-                                savedir    = savef,
-                                shuffle    = True,
-                                dataset_eval= validData,
-                                replicate_K= replicate_K
-                                )
-total_time = time.time()-start_time
+output = vae.learn(  
+					dataset,
+					epoch_start=0 , 
+					epoch_end = params['epochs'], 
+					batch_size = params['batch_size'],
+					savedir = params['savedir'],
+					savefreq = params['savefreq'],
+					evalfreq = params['evalfreq'],
+					max_iters = params['maxiters'],
+					collect_garbage = None,
+				 )
 displayTime('Running VAE_SSL',start_time, time.time())
-t_outputs = vae.evaluateBound(testData, params['batch_size'], S=10)
-savedata['test'] = t_outputs
-savedata['time'] = total_time
-
-#Save file log file
-filename=os.path.join(savef,'final.h5')
-saveHDF5(filename,savedata)
-saveHDF5(os.path.join(savef,'samples.h5'),samples)
-print 'saved to: %s' % filename
-print 'Test Cost: ',savedata['test']['cost']
-print 'Test Accuracy: ',savedata['test']['accuracy']
-print 'Test Bound: ',savedata['test']['bound']
-
-#import ipdb;
-#ipdb.set_trace()
