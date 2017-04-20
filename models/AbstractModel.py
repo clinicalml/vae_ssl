@@ -11,7 +11,7 @@ from theanomodels.utils.misc import saveHDF5
 from theanomodels.models import BaseModel
 from contextlib import contextmanager
 from contextlib import nested 
-from OutputLog import OutputLog
+from outputlog import OutputLog
 from namespace import Namespace
 import json
 import optimizer
