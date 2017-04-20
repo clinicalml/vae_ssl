@@ -2,18 +2,16 @@
 Parse command line and store result in params
 """
 import argparse,copy
-from collections import OrderedDict
 p = argparse.ArgumentParser(description="Arguments for variational autoencoder")
 parser = argparse.ArgumentParser()
 
 #Model specification
-parser.add_argument('-ph','--p_dim_hidden', action='store', default = 200, help='Hidden dimensions (in p)', type=int)
+parser.add_argument('-ph','--p_dim_hidden', action='store', default = 3, help='Hidden dimensions (in p)', type=int)
 parser.add_argument('-pl','--p_layers', action='store',default = 3, help='#Layers in Generative Model', type=int)
 parser.add_argument('-pzl','--z_generative_layers', action='store',default = 0, help='#Layers in hidden stack that receives [z] as input and outputs hidden activations in generative model', type=int)
-parser.add_argument('-ds','--dim_stochastic', action='store',default = 50, help='Stochastic dimensions', type=int)
-parser.add_argument('-da','--dim_alpha', action='store',default = 50, help='Stochastic dimensions', type=int)
+parser.add_argument('-ds','--dim_stochastic', action='store',default = 5, help='Stochastic dimensions', type=int)
 parser.add_argument('-ql','--q_layers', action='store',default = 3, help='#Layers in Recognition Model', type=int)
-parser.add_argument('-qh','--q_dim_hidden', action='store', default = 300, help='Hidden dimensions (in q)', type=int)
+parser.add_argument('-qh','--q_dim_hidden', action='store', default = 3, help='Hidden dimensions (in q)', type=int)
 parser.add_argument('-hzl','--hz_inference_layers', action='store',default = 0, help='#Layers in hidden stack that receives [h(x)] as input and outputs [hz(x)]', type=int)
 parser.add_argument('-al','--alpha_inference_layers', action='store',default = 2, help='#Layers in hidden stack that receives [h(x)] as input and outputs [logbeta]', type=int)
 parser.add_argument('-zl','--z_inference_layers', action='store',default = 2, help='#Layers in hidden stack that receives [alpha,hz(x)] as input and outputs [mu,logcov]', type=int)
@@ -63,7 +61,7 @@ parser.add_argument('-dset','--dataset', action='store',default = '', help='Data
 parser.add_argument('-lr','--lr', action='store',default = 5e-4, help='Learning rate', type=float)
 parser.add_argument('-lrd','--lr_decay', action='store',default = False, help='Learning rate decay', type=bool)
 parser.add_argument('-opt','--optimizer', action='store',default = 'adam', help='Optimizer',choices=['adam','rmsprop'])
-parser.add_argument('-bs','--batch_size', action='store',default = 100, help='Batch Size',type=int)
+parser.add_argument('-bs','--batchsize', action='store',default = 100, help='Batch Size',type=int)
 parser.add_argument('-gn','--grad_norm', action='store',default = 2.5, help='max grad norm per 1000 parameters',type=float)
 parser.add_argument('-dg','--divide_grad', action='store',default = False, help='Rescale grad to batch size',type=float)
 parser.add_argument('-aklz','--annealKL_Z', action='store',default = 1, help='# iterations to anneal KL terms in variational bound (i.e. warmup)',type=int)
@@ -71,6 +69,7 @@ parser.add_argument('-akla','--annealKL_alpha', action='store',default = 1, help
 parser.add_argument('-ancw','--annealCW', action='store',default = 50000, help='# iterations to anneal classification weight',type=float)
 parser.add_argument('-anbd','--annealBound', action='store',default = 1, help='# iterations to anneal variational bound',type=float)
 parser.add_argument('-ns','--num_samples', action='store', default = 1, help='number of random samples per instance during training', type=int)
+parser.add_argument('-maxiters','--maxiters', action='store', default = None, help='max iterations per epoch; this is useful for debugging', type=int)
 
 #Recreation of old torch model
 parser.add_argument('-negKL','--negKL', action='store',default = False, help='negative KL trick',type=bool)
@@ -78,12 +77,12 @@ parser.add_argument('-negKL','--negKL', action='store',default = False, help='ne
 
 #Setup 
 parser.add_argument('-viz','--visualize_model', action='store',default = False,help='Visualize Model',type=bool)
-parser.add_argument('-uid','--unique_id', action='store',default = 'uid',help='Unique Identifier',type=str)
+parser.add_argument('-uid','--unique_id', action='store',default = None,help='Unique Identifier',type=str)
 parser.add_argument('-seed','--seed', action='store',default = 1, help='Random Seed',type=int)
 parser.add_argument('-dir','--savedir', action='store',default = './chkpt', help='Prefix for savedir',type=str)
 parser.add_argument('-ep','--epochs', action='store',default = 500, help='MaxEpochs',type=int)
 parser.add_argument('-reload','--reloadDir', action='store',default = None, help='Directory to reload model from',type=str)
-parser.add_argument('-config','--configFile', action='store',default = 'config.pkl', help='Filename used to pickle config file',type=str)
+parser.add_argument('-config','--configFile', action='store',default = 'config.json', help='Filename used to save config file (will be saved to json format)',type=str)
 parser.add_argument('-sfreq','--savefreq', action='store',default = 100, help='Frequency of saving',type=int)
 parser.add_argument('-efreq','--evalfreq', action='store',default = 10, help='Frequency of evaluation on validation set',type=int)
 parser.add_argument('-savemodel','--savemodel', action='store',default = False, help='Save model params (requires a lot more storage)',type=bool)
@@ -98,106 +97,11 @@ parser.add_argument('-rspec','--reg_spec', action='store',default = '_', help='S
 params = vars(parser.parse_args())
 
 
-hmap       = OrderedDict() 
-hmap['lr']='lr'
-hmap['lr_decay']='LRdecay'
-hmap['q_dim_hidden']='qh'
-hmap['p_dim_hidden']='ph'
-hmap['dim_stochastic']='ds'
-hmap['p_layers']='pl'
-hmap['z_generative_layers']='pzl'
-hmap['q_layers']='ql'
-hmap['z_inference_layers']='zl'
-hmap['alpha_inference_layers']='al'
-hmap['hz_inference_layers']='hzl'
-hmap['p_normlayers']='gennormlayers'
-hmap['nonlinearity']='nl'
-hmap['optimizer']='opt'
-hmap['batch_size']='bs'
-hmap['input_dropout']='idrp'
-hmap['dropout_logbeta']='lbdrp'
-hmap['dropout_hx']='hxdrp'
-hmap['reg_type']    = 'reg'
-hmap['reg_value']   = 'rv'
-hmap['reg_spec']    = 'rspec'
-hmap['grad_norm']    = 'gn'
-hmap['divide_grad']    = 'dg'
-hmap['annealKL_Z'] = 'aKLz'
-hmap['annealKL_alpha'] = 'aKLa'
-hmap['annealCW'] = 'aCW'
-hmap['annealBound'] = 'abd'
-hmap['negKL'] = 'nKL'
-hmap['batchnorm']='BN'
-hmap['modifiedBatchNorm']='mBN'
-hmap['static_mBN']='static'
-hmap['model']='mod'
-hmap['separateBNrunningstats']='sBNs'
-hmap['layernorm']='LN'
-hmap['betaprior']='b0'
-hmap['finalbeta']='fb'
-hmap['annealBP']='aBP'
-hmap['sharpening']='sh'
-hmap['no_softmax']='nSM'
-hmap['bilinear']='bilin'
-hmap['classifier_weight']='cw'
-hmap['boundXY_weight']='bxy'
-hmap['maxBetaWeight']='mbw'
-hmap['maxBetaWeightXY']='mbwxy'
-hmap['KL_loggamma_coef']='kllg'
-hmap['learn_prior']='lpr'
-hmap['learn_posterior']='lpo'
-hmap['num_samples']='ns'
-
-if params['model'] == 'MixDirPrior':
-    hmap['model']='MDP%s-S%s' % (params['betamax'],params['logp_S'])
-elif params['model'] == 'LogisticNormalMP':
-    hmap['model']='LogisticNormalMP-%s' % params['LogitNormalMP']
-elif params['model']=='LogGamma':
-    hmap['model']='Dir'
-elif params['model']=='LogisticNormal_fp':
-    modelname = 'LNfp'
-    if params['learn_posterior']==False:
-        hmap['model']=modelname+str(params['posterior_c'])
-    else:
-        hmap['model']=modelname
-elif params['model']=='GM':
-    hmap['dim_alpha']='da'
-    hmap['y_inference_layers']='yl'
-elif params['model']=='GM2':
-    hmap['dim_alpha']='da'
-    hmap['y_inference_layers']='yl'
-elif params['model']=='LNprd':
-    hmap['y_inference_layers']='yl'
-else:
-    hmap['model']= params['model']
-
-
-#hmap['seed']='seed'
-combined   = ''
-import math
-for k in hmap:
-    if k in params:
-        if k=='model':
-            combined += '%s_' % hmap[k]
-        elif isinstance(params[k],str):
-            combined+=params[k]+'_'
-        else:
-            if str.isdigit(hmap[k][-1]):
-                sep = '-'
-            else:
-                sep = ''
-            if type(params[k]) is float:
-                if params[k] == 0:
-                    combined+=hmap[k]+'0_'
-                else:
-                    if abs(params[k]) < 0.01:
-                        combined+=hmap[k]+sep+('%.2e')%(params[k])+'_'
-                    else:
-                        combined+=hmap[k]+sep+('%.2f')%(params[k])+'_'
-            elif type(params[k]) is bool:
-                if params[k]:
-                    combined+=hmap[k]+'_'
-            else:
-                combined+=hmap[k]+sep+str(params[k])+'_'
-params['unique_id'] = combined[:-1]+'-'+params['unique_id']
-params['unique_id'] = 'VAE_'+params['unique_id'].replace('.','_')
+if __name__=='__main__':
+	import json
+	with open('test_params.json','w') as f:
+		f.write(json.dumps(params,sort_keys=True,indent=2,separators=(',',':')))
+	with open('test_params.json','r') as f:
+		x = json.loads(f.read())
+	for k,v in sorted(x.iteritems()):
+		print '%s:' % k, v
