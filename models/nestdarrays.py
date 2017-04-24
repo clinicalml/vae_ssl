@@ -1,8 +1,8 @@
 import numpy as np
-from namespace import Namespace
+from nestd import NestD
 import numbers
 
-class OutputLog(Namespace):
+class NestDArrays(NestD):
     def __init__(self,data={},axis=0,expand_dim=None,**kwargs):
         """
         Essentially just a nested dictionary.  When new values (which are converted to arrays) or arrays are added to the log, if
@@ -11,14 +11,18 @@ class OutputLog(Namespace):
         """
         self.axis=axis
         self.expand_dim=expand_dim
-        super(OutputLog,self).__init__(data,**kwargs)
+        super(NestDArrays,self).__init__(data,**kwargs)
         if len(self)>0:
             preprocessed = self.apply(self._preprocess)
             for k in self.keys():
                 self[k] = preprocessed[k]
 
     def __recreate__(self,data={},*args,**kwargs):
-        return self.__class__(data,self.axis,self.expand_dim,*args,**kwargs)
+        if 'axis' not in kwargs:
+            kwargs['axis'] = self.axis
+        if 'expand_dim' not in kwargs:
+            kwargs['expand_dim'] = self.expand_dim
+        return super(NestDArrays,self).__recreate__(data,*args,**kwargs)
 
     def _preprocess(self,x):
         if isinstance(x,np.ndarray):
@@ -31,10 +35,8 @@ class OutputLog(Namespace):
             x = np.asarray(x).ravel()
         return x
 
-
-
     def __repr_header__(self):
-        return super(OutputLog,self).__repr_header__() + ' axis=%s, expand_dim=%s' % (self.axis,self.expand_dim)
+        return super(NestDArrays,self).__repr_header__() + ' axis=%s, expand_dim=%s' % (self.axis,self.expand_dim)
 
     def __repr_leveled__(self,level=0):
         def repr_func(x):
@@ -42,7 +44,7 @@ class OutputLog(Namespace):
                 return 'ndarray(shape=%s,dtype=%s)'%(str(x.shape),str(x.dtype))
             else:
                 return x
-        return super(OutputLog,self.apply(repr_func)).__repr_leveled__(level)
+        return super(NestDArrays,self.apply(repr_func)).__repr_leveled__(level)
 
     def append(self,x):
         """
@@ -68,18 +70,18 @@ class OutputLog(Namespace):
         return self
 
 if __name__=='__main__':
-    print OutputLog({'a':{},'b':{}})
+    print NestDArrays({'a':{},'b':{}})
     x = {'a':{'b':{'c':np.asarray(1.),
                    'd':np.random.randn(1),
                    'i':np.ones(0),
                    'h':1},
               'e':np.random.randn(5,5)},
           'f':{'g':np.random.randn(1,2,3)}}
-    log = OutputLog()
+    log = NestDArrays()
     for i in range(3):
         log.append(x)
     print log
-    log2 = OutputLog(axis=0,expand_dim=True)
+    log2 = NestDArrays(axis=0,expand_dim=True)
     for i in range(3):
         log2.append(x)
     print log2
