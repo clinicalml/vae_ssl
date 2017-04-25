@@ -66,7 +66,7 @@ class AbstractSemiVAE(AbstractModel):
         # set tOutputs and tBatchnormStats namespaces to 'q(y|x)'
         with self.namespaces('q(y|x)',['tOutputs','tBatchnormStats']):
             _, logbeta = self._build_hx_logbeta(XL)
-            _, crossentropyloss, correct = self._build_classifier(logbeta,YL)
+            _, crossentropyloss, accuracy = self._build_classifier(logbeta,YL)
 
         # calculate bound, loss, and theano-specific objective function (w/ gradient hacks)
         boundU = boundU.sum()
@@ -88,7 +88,7 @@ class AbstractSemiVAE(AbstractModel):
                                 'classifier':classifier,
                                 'loss':loss,
                                 'objective':objective,
-                                'accuracy':correct,
+                                'accuracy':accuracy,
                             })
         return self.tOutputs
 
@@ -134,8 +134,8 @@ class AbstractSemiVAE(AbstractModel):
 
     def _buildModel(self):
         self.updates_ack = True
-        self.tWeights = Namespace()
-        self.tOutputs = Namespace()
+        self.tWeights = NestD(self.tWeights)
+        self.tOutputs = NestD()
         """
         Build training, evaluation, inference, and sampling graphs for SemiVAE
         """
@@ -184,6 +184,8 @@ class AbstractSemiVAE(AbstractModel):
                 # set the entire class in evaluate mode 
                 # i.e. this sets self._evaluating=True (instead of being False)
                 with self._evaluate():
+                    import ipdb
+                    ipdb.set_trace()
                     self._buildSemiVAE(XU,XL,YL,epsU,epsL)
         
             """
@@ -204,8 +206,8 @@ class AbstractSemiVAE(AbstractModel):
 
         #Optimize all weights in self.tWeights['weights']
         #Note:
-        # * tWeights is a Namespace, a nested dictionary object with some helpful functions
-        # * The .leaves() function returns all the leaves of a Namespace object
+        # * tWeights is a NestD object, a nested dictionary with some helpful functions
+        # * The .leaves() function returns all the leaves of a NestD object
         with self.namespace('weights','tWeights'):
             optimization_outputs = self._setupOptimizer(trainobjective,self.tWeights,
                                                         lr=self.tHyperparams['lr'],
@@ -236,7 +238,7 @@ class AbstractSemiVAE(AbstractModel):
         fn_inputs = [XU,XL,YL,epsU,epsL]
 
         with self.namespace('train','tOutputs'):
-            # .flatten(join='/') converts hierarchical Namespace to Namespace of depth 1
+            # .flatten(join='/') converts hierarchical NestD to NestD of depth 1
             # where keypaths are converted to string and joined by '/'
             # e.g. {'a':{'b':1}} becomes {'a/b':1}
             self.train = theano.function(fn_inputs,self.tOutputs.flatten(join='/')

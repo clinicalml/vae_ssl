@@ -60,7 +60,8 @@ class LogGammaSemiVAE(AbstractSemiVAE):
             with self.namespaces('h(z)'):        
                 Z = self._buildHiddenLayers(Z,diminput=self.params['dim_stochastic']
                                              ,dimoutput=self.params['p_dim_hidden']
-                                             ,nlayers=self.params['z_generative_layers'])
+                                             ,nlayers=self.params['z_generative_layers']
+                                             ,normalization=self.params['p_normlayers'])
 
             # combine alpha and Z
             h = T.concatenate([alpha,Z],axis=1)
@@ -69,7 +70,8 @@ class LogGammaSemiVAE(AbstractSemiVAE):
             with self.namespaces('h(h(z),alpha)'):        
                 h = self._buildHiddenLayers(h,diminput=self.params['dim_stochastic']+self.params['nclasses']
                                              ,dimoutput=self.params['p_dim_hidden']
-                                             ,nlayers=self.params['p_layers'])
+                                             ,nlayers=self.params['p_layers']
+                                             ,normalization=self.params['p_normlayers'])
 
             # calculate emission probability parameters
             if self.params['data_type']=='real':
@@ -93,8 +95,8 @@ class LogGammaSemiVAE(AbstractSemiVAE):
         probs = T.nnet.softmax(logbeta)
         #T.nnet.categorical_crossentropy returns a vector of length batch_size
         loss= T.nnet.categorical_crossentropy(probs,Y) 
-        ncorrect = T.eq(T.argmax(probs,axis=1),Y)
-        return probs, loss, ncorrect
+        accuracy = T.eq(T.argmax(probs,axis=1),Y)
+        return probs, loss, accuracy
 
     def _build_hx_logbeta(self, X): 
         """

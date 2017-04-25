@@ -11,8 +11,8 @@ from theanomodels.utils.misc import saveHDF5
 from theanomodels.models import BaseModel
 from contextlib import contextmanager
 from contextlib import nested 
-from outputlog import OutputLog
-from namespace import Namespace
+from nestd import NestD
+from nestdarrays import NestDArrays
 import json
 import optimizer
 from dataloader import DataLoader
@@ -38,9 +38,9 @@ class AbstractModel(BaseModel, object):
                                            paramFile=paramFile,
                                            reloadFile=reloadDir)
 
-    def getNamespace(self,attr_name):
+    def getNestD(self,attr_name):
         if not hasattr(self,attr_name):
-            setattr(self,attr_name,Namespace())
+            setattr(self,attr_name,NestD())
         attr = getattr(self,attr_name)
         assert isinstance(attr,dict), '%s must be a type of dict' % attr_name
         return attr
@@ -63,9 +63,9 @@ class AbstractModel(BaseModel, object):
         ```
         """
         #do this stuff before executing stuff under the with statement:
-        attr = self.getNamespace(attr_name)
+        attr = self.getNestD(attr_name)
         if key not in attr:
-            attr[key] = Namespace()
+            attr[key] = NestD()
         temp = attr
         setattr(self,attr_name,attr[key])
         yield #wait until we finish executing the with statement"
@@ -115,8 +115,8 @@ class AbstractModel(BaseModel, object):
 
     def print_namespace(self,attr_name):
         assert hasattr(self,attr_name),'self does not have attribute %s' % attr_name
-        attr = self.getNamespace(attr_name)
-        assert isinstance(attr,Namespace),'%s must be a type of Namespace)' % attr
+        attr = self.getNestD(attr_name)
+        assert isinstance(attr,NestD),'%s must be a type of NestD)' % attr
         for k,v in sorted(attr.walk()):
             path = '/'.join(k)
             print_str = path + ':  '
@@ -253,25 +253,36 @@ class AbstractModel(BaseModel, object):
         * dimoutput: size of output_axis dimensions
         * output_axis: a separate set of batchnorm stats will be generated for each element in output_axis (e.g. following linear layers, output_axis=1; following convolutional layers, output_axis should be the channels dimension)
         """
-        bn_shape = (dimoutput,)
-        gamma = self._addWeights('bn_gamma',self._getWeight(bn_shape,**kwargs))
+        assert isinstance(output_axis,int), 'output_axis must be an int'
+        assert isinstance(dimoutput,int), 'dimoutput must be an int'
 
+        init_shape = (dimoutput,)
+        gamma = self._addWeights('bn_gamma',self._getWeight(init_shape,**kwargs))
         
-        running_mean = self._addShared('bn_running_mean',np.zeros(bn_shape),'tBatchnormStats')
-        running_var = self._addShared('bn_running_var',np.ones(bn_shape),'tBatchnormStats')
+        running_mean = self._addShared('bn_running_mean',np.zeros(init_shape),'tBatchnormStats')
+        running_var = self._addShared('bn_running_var',np.ones(init_shape),'tBatchnormStats')
         mom = self._addShared('bn_momentum',np.asarray(0),'tBatchnormStats')
 
+        #gamma = gamma.dimshuffle(bn_shape)
+
+        #set of axes we will calculate batch norm statistics over
+        axis = [i for i in range(ndims) if i!=output_axis]
+        #bn_shape is the input to dimshuffle
+        bn_shape = [0 if i==output_axis else 'x' for i in range(ndims)]
+        _gamma = gamma.dimshuffle(bn_shape)
+        _running_mean = running_mean.dimshuffle(bn_shape)
+        _running_var = running_var.dimshuffle(bn_shape)
+
         if self._evaluating:
-            y = (x-running_mean)/T.sqrt(running_var+eps)
+            y = (x-_running_mean)/T.sqrt(_running_var+eps)
         else:
-            if not hasattr(output_axis,'__iter__'):
-                output_axis = [output_axis]
-            #set of axes we will calculate batch norm statistics over
-            axis = [i for i in range(ndims) if i not in output_axis]
-            batch_mean = x.mean(axis)
-            batch_var = x.var(axis)
+            batch_mean = x.mean(axis,keepdims=True)
+            batch_var = x.var(axis,keepdims=True)
             y = (x-batch_mean)/T.sqrt(batch_var+eps)
             
+            batch_mean = batch_mean.squeeze()
+            batch_var = batch_var.squeeze()
+
             #Update running stats
             m = T.cast(x.shape[0],config.floatX)
             self._addUpdate(running_mean, mom*running_mean+(1.-mom)*batch_mean)
@@ -279,10 +290,11 @@ class AbstractModel(BaseModel, object):
             #momentum will be 0 in the first iteration, and momentum in all subsequent iters
             self._addUpdate(mom,momentum)
 
-        z = gamma*normalized
+        z = _gamma*y
         if bias:
-            beta = self._addWeights('bn_beta',self._getWeight(shape,**kwargs))
-            z = z+beta
+            beta = self._addWeights('bn_beta',self._getWeight(init_shape,**kwargs))
+            _beta = beta.dimshuffle(bn_shape)
+            z = z+_beta
 
         return z
         
@@ -363,7 +375,7 @@ class AbstractModel(BaseModel, object):
         nparams = float(self._countParams(weights))
 
         #Add regularization
-        if reg_value > 0:
+        if reg_value is not None and reg_value > 0:
             objective = optimizer.regularize(objective,weights,reg_value,reg_type)
 
         #gradients
@@ -390,7 +402,7 @@ class AbstractModel(BaseModel, object):
             self.tOptWeights = opt_params
         return optimizer_up, norm_list, objective
 
-    def _buildHiddenLayers(self, h, diminput, dimoutput, nlayers, **kwargs):
+    def _buildHiddenLayers(self, h, diminput, dimoutput, nlayers, normalization=True, **kwargs):
         """
         Convenience function to build hidden layers
         """
@@ -414,7 +426,7 @@ class AbstractModel(BaseModel, object):
 
     def run_epoch(self,dataset,runfunc,maxiters=None,collect_garbage=False):
         start_time = time.time()
-        epoch_outputs = OutputLog(axis=0,expand_dim=None)
+        epoch_outputs = NestDArrays(axis=0,expand_dim=None)
         nbatches = len(dataset)
         with ProgressBar(nbatches) as pb:
             for i,data in enumerate(dataset):
@@ -458,9 +470,9 @@ class AbstractModel(BaseModel, object):
         traindata = DataLoader(dataset.train,batchsize,shuffle=True)
         validdata = DataLoader(dataset.valid,batchsize,shuffle=False)
 
-        log = OutputLog({'train':{},'valid':{}})    
-        log_verbose = OutputLog({'train':{},'valid':{}})    
-        log_samples = OutputLog({'samples':{}})
+        log = NestDArrays({'train':{},'valid':{},'test':{}})    
+        log_verbose = NestDArrays({'train':{},'valid':{},'test':{}}) 
+        log_samples = NestDArrays({'samples':{}})
 
         for epoch in range(epoch_start,epoch_end+1):
             #train
@@ -468,26 +480,28 @@ class AbstractModel(BaseModel, object):
             epoch_log = self.run_epoch(traindata,self.train,maxiters,collect_garbage)
             log['train'].append(epoch_log.apply(np.mean))
             log['train'].append({'epoch':epoch})
-            log_verbose['train'].append(epoch_log)
+            # log_verbose stores the last 100 training samples from each epoch
+            log_verbose['train'].append(epoch_log.apply(lambda x: x[:100]))
 
             if evalfreq is not None and epoch % evalfreq==0:
-                #evaluate
+                #evaluate on validation set
                 print '\nValidating: epoch %s of %s' % (epoch,epoch_end)
                 epoch_log = self.run_epoch(validdata,self.evaluate,maxiters,collect_garbage)
                 log['valid'].append(epoch_log.apply(np.mean))
                 log['valid'].append({'epoch':epoch})
-                log_verbose['valid'].append(epoch_log)
+                log_verbose['valid'].append(epoch_log.apply(lambda x: x[:100]))
 
                 #generate samples
                 log_samples.append(self.sample_model(nsamples=100))
 
             if hasattr(dataset,'test') and epoch == epoch_end:
+                #evaluate on test set
                 print '\nTesting: epoch %s of %s' % (epoch,epoch_end)
                 testdata = DataLoader(dataset.test,batchsize,shuffle=False)
                 epoch_log = self.run_epoch(testdata,self.evaluate,maxiters,collect_garbage)
                 log['test'].append(epoch_log.apply(np.mean))
                 log['test'].append({'epoch':epoch})
-                log_verbose['test'].append(epoch_log)
+                log_verbose['test'].append(epoch_log.apply(lambda x: x[:100]))
             
             if savefreq is not None and (epoch % savefreq==0 or epoch == epoch_end):
                 self._p(('Saving at epoch %d'%epoch))
@@ -532,8 +546,8 @@ class AbstractModel(BaseModel, object):
             assert os.path.exists(f),'cannot find %s' % f
 
         self.params = loadHDF5(configFile)
-        self.tWeights = Namespace(loadHDF5(tWeightsFile))
-        self.tOptWeights = Namespace(loadHDF5(tOptWeightsFile))
+        self.tWeights = NestD(loadHDF5(tWeightsFile))
+        self.tOptWeights = NestD(loadHDF5(tOptWeightsFile))
 
 
             
