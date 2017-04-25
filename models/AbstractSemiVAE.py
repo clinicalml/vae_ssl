@@ -184,10 +184,10 @@ class AbstractSemiVAE(AbstractModel):
                 # set the entire class in evaluate mode 
                 # i.e. this sets self._evaluating=True (instead of being False)
                 with self._evaluate():
-                    import ipdb
-                    ipdb.set_trace()
                     self._buildSemiVAE(XU,XL,YL,epsU,epsL)
         
+            import ipdb
+            ipdb.set_trace()
             """
             Build sampling graph
             """
