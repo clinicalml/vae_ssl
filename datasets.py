@@ -3,7 +3,15 @@ from theanomodels.datasets.load import loadDataset
 import numpy as np
 from models import NestD
 
-class DataNestD(NestD):
+def infer_slice(idx,n):
+    assert isinstance(idx,slice),'idx must be a slice'
+    start = idx.start or idx.start if idx.start >= 0 else n+idx.start
+    stop = idx.stop or idx.stop if idx > 0 else n+idx.stop
+    step = idx.step or 1
+    return range(start,stop,step)
+
+
+class Data(object):
 
     def __init__(self,data={},n=None,*args,**kwargs):
         """
@@ -12,7 +20,7 @@ class DataNestD(NestD):
         n: {int}
         """
         self.n = n
-        super(DataNestD,self).__init__(data,*args,**kwargs)
+        self.data = NestD(data)
 
     def __recreate__(self,data={},n=None,*args,**kwargs):
         if n is None:
@@ -23,35 +31,24 @@ class DataNestD(NestD):
         return self.n
 
     def __getitem__(self,idx):
-        if isinstance(idx,slice):
-            idx = np.arange(self.n)[idx]
-        elif isinstance(idx,tuple) and isinstance(idx[0],slice):
-            assert False, 'cannot handle slicing along multiple axes'
-        if isinstance(idx,collections.Hashable):
-            return super(DataNestD,self).__getitem__(idx)
-        else:
-            d = self.cascade(lambda x:x[idx])
-            d.n = len(idx)
-            return d
+        return self.data.apply(lambda x:x[idx])
 
-    def apply(self,*args,**kwargs):
-        d = super(DataNestD,self).apply(*args,**kwargs)
-        return self.__recreate__(d,self.n,convert_children=False)
+    def apply(self,func,*args,**kwargs):
+        def _apply(x):
+            if isinstance(x,Data):
+                return x.apply(func,*args,**kwargs)
+            else:
+                return func(x,*args,**kwargs)
+        return self.data.apply(_apply,*args,**kwargs)
 
     def __repr_header__(self):
-        return super(DataNestD,self).__repr_header__() + ' n=%s' % self.n
+        name = self.__class__.__name__
+        return name + '{'
 
-    def __repr_leveled__(self,level=0):
-        def repr_func(x):
-            if isinstance(x,np.ndarray):
-                return 'ndarray(shape=%s,dtype=%s)'%(str(x.shape),str(x.dtype))
-            else:
-                return x
-        return super(DataNestD,self.apply(repr_func)).__repr_leveled__(level)
+    def __repr__(self):
+        return self.__repr_header__() + self.data.__repr__()
 
-
-
-class SampledWithReplacement(DataNestD):
+class SampledWithReplacement(Data):
     """
     E.g.
     >> import numpy as np
@@ -61,14 +58,93 @@ class SampledWithReplacement(DataNestD):
     """
     def __getitem__(self,idx):
         if isinstance(idx,slice):
+            assert idx.stop is not None
+            start, stop, step = 0, self.n, 1
+            if idx.start is not None:
+                if idx.start < 0:
+                    start = self.n + idx.start
+                else:
+                    start = idx.start
+            if idx.stop is not None:
+                if idx.stop < 0:
+                    stop = self.n + idx.stop
+                else:
+                    stop = idx.stop
+            if idx.step is not None:
+                step = idx.step
             idx = np.arange(self.n)[idx]
+        print idx
         if not isinstance(idx,collections.Hashable): 
             idx = np.random.randint(low=0,high=self.n,size=len(idx))
         return super(SampledWithReplacement,self).__getitem__(idx)
 
 
+class SemiSupervisedDataTrain(object):
 
-class SemiSupervisedMNIST(NestD):
+    def __init__(self,XL,YL,XU,YU=None,nL=None,nU=None,sample_func=None):
+        self.data = NestD({'U':{'X':XU},
+                           'L':{'X':XL,'Y':YL}})
+        if YU is not None:
+            self.data['U']['Y']=YU
+        if nU is None:
+            nU = len(XU)
+        self.nU = nU
+        if nL is None:
+            nL = len(XL)
+        self.nL = nL
+        self.sample_func = sample_func
+
+    def __len__(self):
+        return self.nU
+
+    def __getitem__(self,idx):
+        if isinstance(idx,slice):
+            idx = infer_slice(idx,self.nU)
+        idx_U = idx
+        idx_L = np.random.randint(low=0,high=self.nL,size=len(idx))
+        U = self.data['U'].apply(lambda x:x[idx_U])
+        L = self.data['L'].apply(lambda x:x[idx_L])
+        rval = NestD({'U':U,'L':L})
+        if self.sample_func:
+            X = rval[:,['X']].apply(self.sample_func)
+            Y = rval[:,['Y']]
+            rval = X.updatepaths(*zip(*Y.walk()))
+        return rval
+
+    def __repr__(self):
+        header = self.__class__.__name__ 
+        subrepr = '\n  '.join(str(self.data.apply(np.shape)).split('\n'))
+        return header + ': ' + subrepr
+
+
+class SemiSupervisedDataEvaluate(object):
+
+    def __init__(self,X,Y,n=None,sample_func=None):
+        self.data = NestD({'U':{'X':X,'Y':Y},
+                           'L':{'X':X,'Y':Y}})
+        if n is None:
+            n = len(X)
+        self.n = n
+        self.sample_func = sample_func
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self,idx):
+        rval = self.data.apply(lambda x:x[idx])
+        if self.sample_func:
+            X = rval[:,['X']].apply(self.sample_func)
+            Y = rval[:,['Y']]
+            rval = X.updatepaths(*zip(*Y.walk()))
+        return rval
+
+    def __repr__(self):
+        header = self.__class__.__name__ 
+        subrepr = '\n  '.join(str(self.data.apply(np.shape)).split('\n'))
+        return header + ': ' + subrepr
+
+
+class SemiSupervisedMNIST(object):
 
     def __init__(self,labeled_per_class=10):
         """
@@ -109,29 +185,34 @@ class SemiSupervisedMNIST(NestD):
         nvalid = len(data['valid_y'])
         ntest = len(data['test_y'])
 
-        self.train = DataNestD({
-                'U':{'X':X,'Y':Y},
-                'L':SampledWithReplacement(
-                    {'X':XL,'Y':YL},n=ntrainL)
-            },n=ntrainU)
-        self.valid = DataNestD({
-                'U':{'X':data['valid'],'Y':data['valid_y']},
-                'L':SampledWithReplacement({'X':data['valid'],'Y':data['valid_y']},n=nvalid)
-            },n=nvalid)
-        self.test = DataNestD({
-                'U':{'X':data['test'],'Y':data['test_y']},
-                'L':SampledWithReplacement({'X':data['test'],'Y':data['test_y']},n=ntest)
-            },n=ntest)
+        sample_func=lambda x: (x>=np.random.uniform(low=0,high=1,size=x.shape)).astype(float)
+        self.train = SemiSupervisedDataTrain(
+                        XU=X,
+                        YU=Y,
+                        XL=XL,
+                        YL=YL,
+                        sample_func=sample_func)
+        self.valid = SemiSupervisedDataEvaluate(
+                        X=data['valid'],
+                        Y=data['valid_y'],
+                        sample_func=sample_func)
+        self.test = SemiSupervisedDataEvaluate(
+                        X=data['test'],
+                        Y=data['test_y'],
+                        sample_func=sample_func)
 
-        data = {
+        self.data = NestD({
             'train':self.train,
             'valid':self.valid,
             'test':self.test
-        }
-        super(SemiSupervisedMNIST,self).__init__(data,convert_children=False)
+        })
 
+    def __repr__(self):
+        header = self.__class__.__name__ 
+        header += ' nclasses=%s, dim_observations=%s' % (self.nclasses,self.dim_observations)
+        subrepr = '\n  '.join(str(self.data).split('\n'))
+        return header + ': ' + subrepr
 
-    def __repr_header__(self):
-        header = ' nclasses=%s, dim_observations=%s' % (self.nclasses,self.dim_observations)
-        return super(SemiSupervisedMNIST,self).__repr_header__() + header
+    def __getitem__(self,k):
+        return self.data[k]
 

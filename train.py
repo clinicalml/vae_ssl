@@ -118,5 +118,5 @@ with track_and_print_time('Running %s' % params['model']):
                         savefreq = params['savefreq'],
                         evalfreq = params['evalfreq'],
                         maxiters = params['maxiters'],
-                        collect_garbage = None,
+                        collect_garbage = True,
                      )

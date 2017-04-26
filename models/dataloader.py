@@ -7,6 +7,7 @@ class DataLoader:
         self.N = len(self.data)
         self.batchsize = batchsize
         self.__i = 0
+        self.__idx = np.arange(self.N)
         self.shuffle = shuffle
 
     def reset(self):
@@ -21,20 +22,26 @@ class DataLoader:
     def next(self):
         
         if self.__i == 0 and self.shuffle:
-            idx = np.random.permutation(np.arange(self.N))
-            self.data = self.data[idx]
+            self.__idx = np.random.permutation(self.__idx)
 
         if self.__i >= self.N:
             self.reset()
             raise StopIteration
 
-        minibatch = self.data[self.__i:min(self.N,self.__i+self.batchsize)]
+        idx = self.__idx[self.__i:min(self.N,self.__i+self.batchsize)]
+        minibatch = self.data[idx]
         self.__i += self.batchsize
         return minibatch
 
 if __name__ == '__main__':
     data = np.arange(10)
     dataloader = DataLoader(data,batchsize=3,shuffle=False)
+    print 'not shuffled'
+    print "length = ",len(dataloader)
+    for i,d in enumerate(dataloader):
+        print 'batch %s:' % i,d
+    dataloader = DataLoader(data,batchsize=3,shuffle=True)
+    print 'shuffled'
     print "length = ",len(dataloader)
     for i,d in enumerate(dataloader):
         print 'batch %s:' % i,d

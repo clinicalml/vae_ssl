@@ -414,9 +414,9 @@ class AbstractModel(BaseModel, object):
             with self.namespaces('layer'+str(l)):
                 h = self._linear(h,diminput,window*dimoutput,**kwargs)
                 if self.params['batchnorm'] and normalization:
-                    inp = self.batchnorm(h,window*dimoutput,output_axis=1,ndims=2,**kwargs)
+                    h = self.batchnorm(h,window*dimoutput,output_axis=1,ndims=2,**kwargs)
                 elif self.params['layernorm'] and normalization:
-                    inp = self._LayerNorm(W=W,b=bias,inp=inp)
+                    h = self._LayerNorm(W=W,b=bias,inp=inp)
                 h = self._applyNL(h)
                 diminput = dimoutput
         return h

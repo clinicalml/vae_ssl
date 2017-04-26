@@ -200,6 +200,12 @@ class NestD(dict,object):
             self[k].updatepath(keypath[1:],value)
         else:
             self[k] = value    
+        return self
+
+    def updatepaths(self,keypaths,values):
+        for k,v in zip(keypaths,values):
+            self.updatepath(k,v)
+        return self
 
     def cascade(self,func,*args,**kwargs):
         """

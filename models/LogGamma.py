@@ -107,12 +107,12 @@ class LogGammaSemiVAE(AbstractSemiVAE):
             self._p(('Inference with dropout :%.4f')%(self.params['input_dropout']))
 
 
-        with self.namespaces('q_h(x)'):
+        with self.namespaces('h(x)'):
             hx = self._buildHiddenLayers(X,diminput=self.params['dim_observations']
                                           ,dimoutput=self.params['q_dim_hidden']
                                           ,nlayers=self.params['q_layers'])
 
-        with self.namespaces('q_logbeta_hidden'):
+        with self.namespaces('logbeta_hidden'):
             h_logbeta = self._buildHiddenLayers(hx,diminput=self.params['q_dim_hidden']
                                                   ,dimoutput=self.params['q_dim_hidden']
                                                   ,nlayers=self.params['alpha_inference_layers'])
@@ -120,13 +120,14 @@ class LogGammaSemiVAE(AbstractSemiVAE):
         if not self._evaluating:
             h_logbeta = self._dropout(h_logbeta,self.params['dropout_logbeta']) 
 
-        with self.namespaces('q_logbeta'):
+        with self.namespaces('logbeta'):
             logbeta = self._linear(h_logbeta,diminput=self.params['q_dim_hidden']
                                             ,dimoutput=self.params['nclasses'])
 
         #clip to avoid nans
         logbeta = T.clip(logbeta,-5,5)
 
+        self.tOutputs['logbeta'] = logbeta
         return hx, logbeta
 
     def _build_inference(self,alpha,hx):
@@ -158,9 +159,10 @@ class LogGammaSemiVAE(AbstractSemiVAE):
             diminput = self.params['q_dim_hidden']
             dimoutput = self.params['dim_stochastic']
 
-            with self.namespaces('params'):
+            with self.namespaces('mu'):
                 mu = self._linear(q_Z_h,diminput=self.params['q_dim_hidden']
                                        ,dimoutput=self.params['dim_stochastic'])
+            with self.namespaces('logcov2'):
                 logcov2 = self._linear(q_Z_h,diminput=self.params['q_dim_hidden']
                                               ,dimoutput=self.params['dim_stochastic'])
 
@@ -292,6 +294,8 @@ class LogGammaSemiVAE(AbstractSemiVAE):
                                     'alpha':alpha,
                                     'U':U,
                                     'Z':Z,
+                                    'mu':mu,
+                                    'logcov2':logcov2,
                                     #'paramsX':paramsX[0],
                                     'logbeta':logbeta,
                                     'bound':bound,

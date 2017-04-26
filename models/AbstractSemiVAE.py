@@ -186,8 +186,6 @@ class AbstractSemiVAE(AbstractModel):
                 with self._evaluate():
                     self._buildSemiVAE(XU,XL,YL,epsU,epsL)
         
-            import ipdb
-            ipdb.set_trace()
             """
             Build sampling graph
             """
