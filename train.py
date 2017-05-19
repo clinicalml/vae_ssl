@@ -69,8 +69,8 @@ with logger.send_stderr_to_logger():
                 from models.vae_ssl_exactM2 import ExactSemiVAE
                 SSL_VAE_CLASS = ExactSemiVAE
             elif params['model'] in ['GumbelSoftmaxM2','STGumbelSoftmaxM2']:
-                from models.GumbelSoftmaxM2 import SemiVAE
-                SSL_VAE_CLASS = SemiVAE
+                from models.GumbelSoftmaxM2 import GumbelSoftmaxM2SemiVAE 
+                SSL_VAE_CLASS = GumbelSoftmaxM2SemiVAE
             elif params['model'] in ['GumbelSoftmax','STGumbelSoftmax']:
                 from models.GumbelSoftmax import GumbelSoftmax 
                 SSL_VAE_CLASS = GumbelSoftmax

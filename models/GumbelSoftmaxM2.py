@@ -1,36 +1,15 @@
-import six.moves.cPickle as pickle
-from collections import OrderedDict
-import sys, time, os
-import numpy as np
-import gzip, warnings
-import theano
-from theano import config
-theano.config.compute_test_value = 'warn'
-from theano.compile.ops import as_op
-from theano.printing import pydotprint
-import theano.tensor as T
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-from theanomodels.utils.optimizer import adam,rmsprop
-from theanomodels.utils.misc import saveHDF5
-from randomvariates import randomLogGamma
-from special import Psi, Polygamma
-from theanomodels.models import BaseModel
-from LogGamma import LogGammaSemiVAE
-import ipdb
+from ExactM2 import * 
 
-class SemiVAE(LogGammaSemiVAE):
-
-    def __init__(self,params,paramFile=None,reloadFile=None):
-        super(SemiVAE,self).__init__(params,paramFile=paramFile,reloadFile=reloadFile)
+class GumbelSoftmaxM2SemiVAE(ExactM2SemiVAE):
 
     def _sample_Y(self,logbeta):
         u = self.srng.uniform(logbeta.shape,low=1e-10,high=1.-1e-10,dtype=config.floatX)
         u = theano.gradient.disconnected_grad(u)
         g = -T.log(-T.log(u))
         if self.params['model']=='GumbelSoftmaxM2':
-            y = T.nnet.softmax((g+logbeta)*self.tWeights['sharpening'])
+            y = T.nnet.softmax((g+logbeta)*self.tHyperparams['sharpening'])
         elif self.params['model']=='STGumbelSoftmaxM2':
-            y = T.nnet.softmax((g+logbeta)*self.tWeights['sharpening'])
+            y = T.nnet.softmax((g+logbeta)*self.tHyperparams['sharpening'])
             y_discrete = T.argmax(g+logbeta,axis=1)
             y_discrete = T.extra_ops.to_one_hot(y_discrete,self.params['nclasses'],dtype=config.floatX)
             y = theano.gradient.disconnected_grad(y_discrete-y)+y
@@ -38,125 +17,116 @@ class SemiVAE(LogGammaSemiVAE):
             assert False, 'unhandled GumbelSoftmax type %s' % self.params['model']
         return y
 
-    def _buildGraph(self, X, eps, betaprior=0.2, Y=None, dropout_prob=0.,add_noise=False,annealKL_Z=None,annealKL_alpha=None,evaluation=False,modifiedBatchNorm=False,graphprefix=None):
+
+    def _buildVAE(self, X, eps, Y=None):
         """
-                                Build VAE subgraph to do inference and emissions
-                (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
+        Build VAE subgraph to do inference and emissions 
+        (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
+
+        returns a bunch of VAE outputs
         """
-        if Y == None:
+        if Y is None:
             self._p(('Building graph for lower bound of logp(x)'))
         else:
             self._p(('Building graph for lower bound of logp(x,y)'))
-        hx, logbeta = self._buildRecognitionBase(X,dropout_prob,evaluation,modifiedBatchNorm,graphprefix)
-        suffix = '_e' if evaluation else '_t'
-        self._addVariable(graphprefix+'_h(x)'+suffix,hx,ignore_warnings=True)
 
+        # build h(x) and logbeta
+        hx, logbeta = self._build_inference_Y(X)
+
+        # batchsize
         bs = eps.shape[0]
-        nc = self.params['nclasses']
+        if Y is not None: 
+            """
+            -logp(x,y)
+            """
+            # -log(p(y))
+            nllY = bs*theano.shared(np.log(self.params['nclasses']))
 
-        if Y is None:
-            probs = T.nnet.softmax(logbeta)
-            logprobs = T.log(probs)
-            KL_Y = T.sum(probs*logprobs,axis=1)+np.log(nc)
-            y = self._sample_Y(logbeta)
+            # gaussian parameters (Z)
+            mu, logcov2 = self._build_inference_Z(Y,hx)
 
-            mu, logcov = self._build_qz(y,hx,evaluation,modifiedBatchNorm,graphprefix)
-            self._addVariable(graphprefix+'_mu'+suffix,mu,ignore_warnings=True)
-            self._addVariable(graphprefix+'_logcov2'+suffix,logcov,ignore_warnings=True)
-            #eps = self.srng.normal(mu.shape,0,1,dtype=config.floatX) 
-            Z, KL_Z = self._variationalGaussian(mu,logcov,eps)
-            #add noise to assist in training
-            if add_noise:
+            # gaussian variates
+            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+
+            if not self._evaluating:
+                # adding noise during training usually helps performance
                 Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
-            #generative model
-            _, nllX = self._buildEmission(y, Z, X, graphprefix, evaluation=evaluation,modifiedBatchNorm=modifiedBatchNorm)
-            KL = KL_Y.sum() + KL_Z.sum()
-            NLL = nllX.sum()
-            
-        else:
-            nllY = bs*theano.shared(np.log(nc))
-            mu, logcov = self._build_qz(Y,hx,evaluation,modifiedBatchNorm,graphprefix)
-            self._addVariable(graphprefix+'_mu'+suffix,mu,ignore_warnings=True)
-            self._addVariable(graphprefix+'_logcov2'+suffix,logcov,ignore_warnings=True)
-            #eps = self.srng.normal(mu.shape,0,1,dtype=config.floatX) 
-            Z, KL_Z = self._variationalGaussian(mu,logcov,eps)
-            #add noise to assist in training
-            if add_noise:
-                Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
-            #generative model
-            _, nllX = self._buildEmission(Y, Z, X, graphprefix, evaluation=evaluation,modifiedBatchNorm=modifiedBatchNorm)
+
+            # generative model
+            paramsX = self._build_generative(Y, Z)
+            if self.params['data_type']=='real':
+                nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
+            else:
+                nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
 
             KL = KL_Z.sum()
             NLL = nllX.sum() + nllY.sum()
-
-        bound = KL + NLL
-        #objective function
-        if evaluation:
-            objfunc = bound
         else:
-            if annealKL_Z is None and annealKL_alpha is None:
-                objfunc = bound
-            elif annealKL_Z is None:
-                objfunc = KL_Z.sum() + NLL
-                if Y is None:
-                    objfunc += annealKL_alpha*KL_Y.sum()
-            elif annealKL_alpha is None:
-                objfunc = annealKL_Z*KL_Z.sum() + NLL
-                if Y is None:
-                    objfunc += KL_Y.sum()
+            """
+            -logp(x)
+            """
+            # categorical variates and KL(Y)
+            probs = T.nnet.softmax(logbeta)
+            logprobs = T.log(probs)
+            KL_Y = T.sum(probs*logprobs,axis=1)+np.log(self.params['nclasses'])
+            y = self._sample_Y(logbeta)
+
+            # gaussian parameters (Z)
+            mu, logcov2 = self._build_inference_Z(y,hx)
+
+            # gaussian variates
+            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+
+            if not self._evaluating:
+                # adding noise during training usually helps performance
+                Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
+
+            # generative model
+            paramsX = self._build_generative(y, Z)
+            if self.params['data_type']=='real':
+                nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
             else:
-                objfunc = annealKL_Z*KL_Z.sum() + NLL
-                if Y is None:
-                    objfunc += annealKL_alpha*KL_Y.sum()
+                nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
 
-        outputs = {
-                   'Z':Z,
-                   'logbeta':logbeta,
-                   'bound':bound,
-                   'objfunc':objfunc,
-                   'nllX':nllX,
-                   'KL_Z':KL_Z,
-                   'KL':KL,
-                   'NLL':NLL}
-        if Y!=None:
-            outputs['nllY']=nllY
+            KL = KL_Y.sum() + KL_Z.sum()
+            NLL = nllX.sum()
+
+        bound = KL + NLL 
+
+        # objective function
+        if self._evaluating:
+            objfunc = bound 
+        else: 
+            # annealing (training only)
+            anneal = self.tHyperparams['annealing']
+
+            # annealed objective function
+            if Y is not None:
+                objfunc = anneal['KL_Z']*KL_Z.sum() + NLL
+            else:
+                objfunc = anneal['KL_alpha']*KL_Y.sum() + anneal['KL_Z']*KL_Z.sum() + NLL
+
+        self.tOutputs.update({
+                                'Z':Z,
+                                'mu':mu,
+                                'logcov2':logcov2,
+                                'logbeta':logbeta,
+                                'bound':bound,
+                                'objfunc':objfunc,
+                                'nllX':nllX,
+                                'KL_Z':KL_Z,
+                                'KL':KL,
+                                'NLL':NLL,
+                                'eps':eps,
+                             })
+        if Y is not None:
+            self.tOutputs.update({
+                                'nllY':nllY
+                                })
         else:
-            outputs['KL_Y']=KL_Y
+            self.tOutputs.update({
+                                'KL_Y':KL_Y
+                                })
 
-        return outputs
-
-
-    def _getModelOutputs(self,outputsU,outputsL,suffix=''):
-        my_outputs = {
-                         'KL_Y_U':outputsU['KL_Y'].sum(),
-                         'nllX_U':outputsU['nllX'].sum(),
-                         'NLL_U':outputsU['NLL'].sum(),
-                         'KL_U':outputsU['KL'].sum(),
-                         'KL_Z_U':outputsU['KL_Z'].sum(),
-                         'nllY':outputsL['nllY'].sum(),
-                         'nllX_L':outputsL['nllX'].sum(),
-                         'NLL_L':outputsL['NLL'].sum(),
-                         'KL_L':outputsL['KL'].sum(),
-                         'KL_Z_L':outputsL['KL_Z'].sum(),
-                         'logbeta_U':outputsU['logbeta'],
-                         'logbeta_L':outputsL['logbeta'],
-                         'mu_U':self._tVariables['U_mu'+suffix],
-                         'logcov2_U':self._tVariables['U_logcov2'+suffix],
-                         'mu_L':self._tVariables['L_mu'+suffix],
-                         'logcov2_L':self._tVariables['L_logcov2'+suffix]
-                         }
-
-        if self.params['bilinear']:
-            my_outputs['hz_U'] = self._tVariables['U_hz'+suffix]
-            my_outputs['hz_L'] = self._tVariables['L_hz'+suffix]
-            my_outputs['hz_W_alpha_U'] = self._tVariables['U_hz_W_alpha'+suffix]
-            my_outputs['hz_W_alpha_L'] = self._tVariables['L_hz_W_alpha'+suffix]
-            my_outputs['p_Z_embedded_U'] = self._tVariables['U_p_Z_embedded'+suffix]
-            my_outputs['p_Z_embedded_L'] = self._tVariables['L_p_Z_embedded'+suffix]
-            my_outputs['p_alpha_Z_input_W_U'] = self._tVariables['U_p_alpha_Z_input_W'+suffix]
-            my_outputs['p_alpha_Z_input_W_L'] = self._tVariables['L_p_alpha_Z_input_W'+suffix]
-        return my_outputs
-
-
-
+        return self.tOutputs
 
