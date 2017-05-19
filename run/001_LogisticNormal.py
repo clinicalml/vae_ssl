@@ -1,6 +1,6 @@
 import os
 
-exptdir = '001_LogGamma'
+exptdir = '001_LogisticNormal'
 script = 'train.py'
 rootdir = 'output'
 session = exptdir
@@ -10,9 +10,7 @@ theano_flags='device=gpu{gpuid}'
 run_flags=[#'--savedir=%s'%savedir,
            '--epochs=300',
            '-sfreq 150',
-           '-betaprior 0.2',
            '--batchnorm=True',
-           #'--negKL=True',
            '--annealKL_Z=1',
            '--annealKL_alpha=1',
            '--annealCW=50000',
@@ -25,13 +23,12 @@ run_flags=[#'--savedir=%s'%savedir,
            #'-cw 128',
            '-lr 5e-4',
            '-ds 50',
-           '-model LogGamma',
+           '-model LogisticNormal',
            #'--learn_posterior=True',
-           #'-seed 1',
+           '-seed 1',
            '-rv 0.1']
 vary_flags = {
-    'cw128_seed1':'-cw 128 -seed 1'
-    #'cw128_seed1':'-cw 128 -seed 1 --negKL=True',
+    'cw128_seed1':'-cw 128 -seed 1 --posterior_val=-6'
 }
 
 numgpus = 2

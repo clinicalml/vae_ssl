@@ -8,7 +8,7 @@ import theano
 import scipy.special
 
 class Polygamma(theano.Op):
-    __props__ = ("k")
+    __props__ = ("k",)
 
     def __init__(self, k):
         self.k = k

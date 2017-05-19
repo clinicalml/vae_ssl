@@ -17,6 +17,7 @@ import json
 import optimizer
 from dataloader import DataLoader
 from progressbar import ProgressBar
+import gc
 
 IGNORE_WARNINGS=True
 
@@ -27,7 +28,11 @@ class AbstractModel(BaseModel, object):
     def _createParams(self):
         return {}
 
-    def __init__(self, params, configFile, reloadDir=None):
+    def __init__(self, params, configFile, reloadDir=None, logfile=None):
+        if logfile is not None:
+            assert isinstance(logfile, file), 'if logfile is not None, it must be a type of file'
+        self.logfile = logfile
+        
         with open(configFile,'w') as f:
             f.write(json.dumps(params,sort_keys=True,indent=2,separators=(',',':')))
         if configFile[-5:]=='.json':
@@ -429,6 +434,13 @@ class AbstractModel(BaseModel, object):
         epoch_outputs = NestDArrays(axis=0,expand_dim=None)
         nbatches = len(dataset)
         with ProgressBar(nbatches) as pb:
+            # note that the ProgressBar will temporarily
+            # stop sending print outputs to any logfile attached to stdout, 
+            # because of the  carriage returns it uses, which we don't want 
+            # or need in our logfile, because it would make the logfile look 
+            # funny and hard to read
+            # also note that at the end of the with statement, we will write
+            # the final output of the ProgressBar to the logfile, if one exists
             for i,data in enumerate(dataset):
                 if collect_garbage:
                     gc.collect()
@@ -437,8 +449,15 @@ class AbstractModel(BaseModel, object):
                 minibatch = self.preprocess_minibatch(data)
                 # minibatch is assumed to be a dict
                 batch_outputs = runfunc(**minibatch)
+                # some of these are CudaNDArray, so convert to NDarray
+                batch_outputs = NestD(batch_outputs).apply(np.asarray)
+                #import ipdb
+                #ipdb.set_trace()
                 epoch_outputs.append(batch_outputs)
                 pb.update(i+1,self.progressBarUpdate(epoch_outputs))
+            # if logfile exists, write output to it
+            if self.logfile:
+                self.logfile.write(pb.get_current_output_str())
         duration = time.time() - start_time
         epoch_outputs.append({'duration (seconds)':duration})
         return epoch_outputs
@@ -447,8 +466,8 @@ class AbstractModel(BaseModel, object):
         # see self.progressBarUpdate for use
         # use list to preserve order
         return [
-            ('accuracy',np.mean,'%0.2f (epoch mean)'),
             ('loss',np.mean,'%0.2f (epoch mean)'),
+            ('accuracy',np.mean,'%0.2f (epoch mean)'),
         ]
 
     def progressBarUpdate(self,epoch_outputs={}):
@@ -462,6 +481,9 @@ class AbstractModel(BaseModel, object):
             return report
         else:
             return None
+
+    def post_train_hook(self):
+        pass
 
     def learn(self, dataset, epoch_start=0, epoch_end=1000, batchsize=200,
               savedir=None, savefreq=None, evalfreq=None,
@@ -478,6 +500,7 @@ class AbstractModel(BaseModel, object):
             #train
             print '\nTraining: epoch %s of %s' % (epoch,epoch_end)
             epoch_log = self.run_epoch(traindata,self.train,maxiters,collect_garbage)
+            self.post_train_hook()
             log['train'].append(epoch_log.apply(np.mean))
             log['train'].append({'epoch':epoch})
             # log_verbose stores the last 100 training samples from each epoch

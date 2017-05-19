@@ -91,14 +91,15 @@ class LogGammaSemiVAE(AbstractSemiVAE):
                     params = {'p':p}
             return params
 
-    def _build_classifier(self, logbeta, Y):
+    def _build_classifier(self, XL, Y):
+        _, logbeta = self._build_inference_alpha(XL)
         probs = T.nnet.softmax(logbeta)
         #T.nnet.categorical_crossentropy returns a vector of length batch_size
         loss= T.nnet.categorical_crossentropy(probs,Y) 
         accuracy = T.eq(T.argmax(probs,axis=1),Y)
         return probs, loss, accuracy
 
-    def _build_hx_logbeta(self, X): 
+    def _build_inference_alpha(self, X): 
         """
         return h(x), logbeta(h(x))
         """
@@ -112,7 +113,7 @@ class LogGammaSemiVAE(AbstractSemiVAE):
                                           ,dimoutput=self.params['q_dim_hidden']
                                           ,nlayers=self.params['q_layers'])
 
-        with self.namespaces('logbeta_hidden'):
+        with self.namespaces('h_logbeta'):
             h_logbeta = self._buildHiddenLayers(hx,diminput=self.params['q_dim_hidden']
                                                   ,dimoutput=self.params['q_dim_hidden']
                                                   ,nlayers=self.params['alpha_inference_layers'])
@@ -130,7 +131,7 @@ class LogGammaSemiVAE(AbstractSemiVAE):
         self.tOutputs['logbeta'] = logbeta
         return hx, logbeta
 
-    def _build_inference(self,alpha,hx):
+    def _build_inference_Z(self,alpha,hx):
         """
         return q(z|alpha,h(x))
         """
@@ -141,7 +142,7 @@ class LogGammaSemiVAE(AbstractSemiVAE):
         with self.namespaces('hz(hx)'):
             hz = self._buildHiddenLayers(hx,diminput=self.params['q_dim_hidden']
                                            ,dimoutput=self.params['q_dim_hidden']
-                                           ,nlayers=self.params['q_layers'])
+                                           ,nlayers=self.params['hz_inference_layers'])
 
         with self.namespaces('hz(alpha)'):
             alpha_embed = self._linear(alpha,diminput=self.params['nclasses']
@@ -181,138 +182,128 @@ class LogGammaSemiVAE(AbstractSemiVAE):
         else:
             self._p(('Building graph for lower bound of logp(x,y)'))
 
-        # from now on, under this with statement, we will always be working
-        # with the same set of namespaces, so lets set them as defaults.
-        # (this is actually already the default, but let's put it here anyway)
-        #
-        # tWeights: container for all theano shared variables
-        # tOutputs: container for variables that will be outputs of our theano functions
-        # tBatchnormStats: container for batchnorm running statistics
-        #    * we have separate batchnorm running stats for each of p(x), p(x,y), q(y|x)
-        with self.set_attr('default_namespaces',['tWeights','tOutputs','tBatchnormStats']):
+        # build h(x) and logbeta
+        hx, logbeta = self._build_inference_alpha(X)
 
-            # build h(x) and logbeta
-            hx, logbeta = self._build_hx_logbeta(X)
+        beta = T.exp(logbeta)
+        if Y is not None: 
+            """
+            -logp(x,y)
+            """
 
-            beta = T.exp(logbeta)
-            if Y is not None: 
-                """
-                -logp(x,y)
-                """
-
-                if self.params['logpxy_discrete']:
-                    # assume alpha = Y
-                    nllY = theano.shared(-np.log(0.1))
-                    KL_loggamma = theano.shared(0.)
-                    alpha = Y
-                else:
-                    if self.params['learn_posterior']:
-                        with self.namespaces('q(alpha|y)'):            
-                            posterior = self._addWeights('posterior',np.asarray(1.))
-                            beta += Y*T.nnet.softplus(posterior) 
-                    else:
-                        beta += Y
-
-                    # select beta_y
-                    beta_y = (beta*Y).sum(axis=1)
-
-                    # calculate -logp(Y|alpha)
-                    nllY = Psi()(beta.sum(axis=1)) - Psi()(beta_y)
-
-                    # loggamma variates
-                    U, KL_loggamma = self._variationalLoggamma(beta,betaprior)
-
-                    # convert to Dirichlet (with sharpening)
-                    sharpening = self.tHyperparams['sharpening']
-                    alpha = T.nnet.softmax(U*sharpening)
+            if self.params['logpxy_discrete']:
+                # assume alpha = Y
+                nllY = theano.shared(-np.log(0.1))
+                KL_loggamma = theano.shared(0.)
+                alpha = Y
             else:
-                """
-                -logp(x)
-                """
+                if self.params['learn_posterior']:
+                    with self.namespaces('q(alpha|y)'):            
+                        posterior = self._addWeights('posterior',np.asarray(1.))
+                        beta += Y*T.nnet.softplus(posterior) 
+                else:
+                    beta += Y
+
+                # select beta_y
+                beta_y = (beta*Y).sum(axis=1)
+
+                # calculate -logp(Y|alpha)
+                nllY = Psi()(beta.sum(axis=1)) - Psi()(beta_y)
 
                 # loggamma variates
                 U, KL_loggamma = self._variationalLoggamma(beta,betaprior)
 
                 # convert to Dirichlet (with sharpening)
-                alpha = T.nnet.softmax(U*self.tHyperparams['sharpening'])
+                sharpening = self.tHyperparams['sharpening']
+                alpha = T.nnet.softmax(U*sharpening)
+        else:
+            """
+            -logp(x)
+            """
 
-            mu, logcov2 = self._build_inference(alpha,hx)
+            # loggamma variates
+            U, KL_loggamma = self._variationalLoggamma(beta,betaprior)
 
-            # gaussian variates
-            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+            # convert to Dirichlet (with sharpening)
+            alpha = T.nnet.softmax(U*self.tHyperparams['sharpening'])
 
-            if not self._evaluating:
-                # adding noise during training usually helps performance
-                Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
+        mu, logcov2 = self._build_inference_Z(alpha,hx)
 
-            # generative model
-            paramsX = self._build_generative(alpha, Z)
-            if self.params['data_type']=='real':
-                nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
-            else:
-                nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
+        # gaussian variates
+        Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
 
-            # negative of the lower bound
-            KL = KL_loggamma.sum() + KL_Z.sum()
-            NLL = nllX.sum()
-            if Y is not None:
-                NLL += nllY.sum()
-            bound = KL + NLL 
+        if not self._evaluating:
+            # adding noise during training usually helps performance
+            Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
 
-            # objective function
-            if self._evaluating:
-                objfunc = bound 
-            else: 
-                # annealing (training only)
-                anneal = self.tHyperparams['annealing']
+        # generative model
+        paramsX = self._build_generative(alpha, Z)
+        if self.params['data_type']=='real':
+            nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
+        else:
+            nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
 
-                # annealed objective function
-                objfunc = anneal['KL_alpha']*KL_loggamma.sum() + anneal['KL_Z']*KL_Z.sum() + NLL
+        # negative of the lower bound
+        KL = KL_loggamma.sum() + KL_Z.sum()
+        NLL = nllX.sum()
+        if Y is not None:
+            NLL += nllY.sum()
+        bound = KL + NLL 
 
-                # gradient hack to do black box variational inference:
-                if Y is None or self.params['logpxy_discrete']==False:
-                    # previous if statement checks to see if we need to do inference over alpha
-                    # when self.params['logpxy_discrete']=True, we assume p(alpha|Y)=Y
+        # objective function
+        if self._evaluating:
+            objfunc = bound 
+        else: 
+            # annealing (training only)
+            anneal = self.tHyperparams['annealing']
 
-                    # make sure sizes are correct to prevent unintentional broadcasting
-                    KL_Z = KL_Z.reshape([-1])
-                    nllX = nllX.reshape([-1])
+            # annealed objective function
+            objfunc = anneal['KL_alpha']*KL_loggamma.sum() + anneal['KL_Z']*KL_Z.sum() + NLL
 
-                    if self.params['negKL']:
-                        # the negative KL trick is something we found by accident that
-                        # works well for when alpha is assumed to be loggamma or dirichlet
-                        #negative KL trick :(
-                        f = theano.gradient.disconnected_grad(-2.*KL_Z+nllX)
-                    else:
-                        f = theano.gradient.disconnected_grad(anneal['KL_Z']*KL_Z+nllX)
+            # gradient hack to do black box variational inference:
+            if Y is None or self.params['logpxy_discrete']==False:
+                # previous if statement checks to see if we need to do inference over alpha
+                # when self.params['logpxy_discrete']=True, we assume p(alpha|Y)=Y
 
-                    # apply gradient hack to objective function
-                    BBVIgradientHack = f*self._logpdf_LogGamma(U,beta).reshape([-1])
-                    objfunc += BBVIgradientHack.sum()
+                # make sure sizes are correct to prevent unintentional broadcasting
+                KL_Z = KL_Z.reshape([-1])
+                nllX = nllX.reshape([-1])
 
+                if self.params['negKL']:
+                    # the negative KL trick is something we found by accident that
+                    # works well for when alpha is assumed to be loggamma or dirichlet
+                    #negative KL trick :(
+                    f = theano.gradient.disconnected_grad(-2.*KL_Z+nllX)
+                else:
+                    f = theano.gradient.disconnected_grad(anneal['KL_Z']*KL_Z+nllX)
+
+                # apply gradient hack to objective function
+                BBVIgradientHack = f*self._logpdf_LogGamma(U,beta).reshape([-1])
+                objfunc += BBVIgradientHack.sum()
+
+        self.tOutputs.update({
+                                'alpha':alpha,
+                                'U':U,
+                                'Z':Z,
+                                'mu':mu,
+                                'logcov2':logcov2,
+                                #'paramsX':paramsX[0],
+                                'logbeta':logbeta,
+                                'bound':bound,
+                                'objfunc':objfunc,
+                                'nllX':nllX,
+                                'KL_loggamma':KL_loggamma,
+                                'KL_Z':KL_Z,
+                                'KL':KL,
+                                'NLL':NLL,
+                                'eps':eps,
+                             })
+        if Y is not None:
             self.tOutputs.update({
-                                    'alpha':alpha,
-                                    'U':U,
-                                    'Z':Z,
-                                    'mu':mu,
-                                    'logcov2':logcov2,
-                                    #'paramsX':paramsX[0],
-                                    'logbeta':logbeta,
-                                    'bound':bound,
-                                    'objfunc':objfunc,
-                                    'nllX':nllX,
-                                    'KL_loggamma':KL_loggamma,
-                                    'KL_Z':KL_Z,
-                                    'KL':KL,
-                                    'NLL':NLL,
-                                    'eps':eps,
-                                 })
-            if Y is not None:
-                self.tOutputs.update({
-                                    'nllY':nllY
-                                    })
+                                'nllY':nllY
+                                })
 
-            return self.tOutputs
+        return self.tOutputs
 
 
     def _setupHyperparameters(self):
@@ -340,6 +331,6 @@ class LogGammaSemiVAE(AbstractSemiVAE):
         # use list to preserve order
         report_map = super(LogGammaSemiVAE,self).progressBarReportMap()
         return report_map +[
-            ('hyperparameters/betaprior',lambda x:np.mean(x[-1]),'%05.f (last)'),
+            ('hyperparameters/betaprior',lambda x:np.mean(x[-1]),'%0.5f (last)'),
         ]
     

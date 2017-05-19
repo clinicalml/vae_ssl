@@ -27,15 +27,15 @@ class AbstractSemiVAE(AbstractModel):
         return [
             ('accuracy',lambda x:x.astype(float).mean(),'%0.2f (epoch mean)'),
             ('loss',np.mean,'%0.2f (epoch mean)'),
-            ('objective',np.mean,'%0.2f (epoch mean)'),
+            #('objective',np.mean,'%0.2f (epoch mean)'),
             ('classifier',np.mean,'%0.2f (epoch mean)'),
             ('bound',np.mean,'%0.2f (epoch mean)'),
             ('boundU',np.mean,'%0.2f (epoch mean)'),
             ('boundL',np.mean,'%0.2f (epoch mean)'),
-            ('hyperparameters/lr',lambda x:np.mean(x[-1]),'%02.e (last)'),
-            ('hyperparameters/annealing/annealCW',lambda x:np.mean(x[-1]),'%02.e (last)'),
-            ('hyperparameters/annealing/annealKL_Z',lambda x:np.mean(x[-1]),'%02.e (last)'),
-            ('hyperparameters/annealing/annealKL_alpha',lambda x:np.mean(x[-1]),'%02.e (last)'),
+            ('hyperparameters/lr',lambda x:np.mean(x[-1]),'%0.2e (last)'),
+            ('hyperparameters/annealing/classifier',lambda x:np.mean(x[-1]),'%0.2e (last)'),
+            ('hyperparameters/annealing/KL_Z',lambda x:np.mean(x[-1]),'%0.2e (last)'),
+            ('hyperparameters/annealing/KL_alpha',lambda x:np.mean(x[-1]),'%0.2e (last)'),
         ]
 
 
@@ -49,24 +49,33 @@ class AbstractSemiVAE(AbstractModel):
           semi supervised VAEs
         """
 
-        # set tOutputs and tBatchnormStats namespaces to 'p(x)'
-        with self.namespaces('p(x)',['tOutputs','tBatchnormStats']):
-            outputsU = self._buildVAE(XU,epsU,Y=None)
-            boundU = outputsU['bound']
-            objfuncU = outputsU['objfunc']
+        # from now on, under this with statement, we will almost always be working
+        # with the same set of namespaces, unless otherwise stated, so lets set them as defaults.
+        # (this is actually already the default, but let's put it here anyway)
+        #
+        # tWeights: container for all theano shared variables
+        # tOutputs: container for variables that will be outputs of our theano functions
+        # tBatchnormStats: container for batchnorm running statistics
+        # note: we have separate batchnorm running stats for each of p(x), p(x,y), q(y|x)
+        with self.set_attr('default_namespaces',['tWeights','tOutputs','tBatchnormStats']):
 
-        YL_onehot = T.extra_ops.to_one_hot(YL,self.params['nclasses'],dtype=config.floatX)
+            # set tOutputs and tBatchnormStats namespaces to 'p(x)'
+            with self.namespaces('p(x)',['tOutputs','tBatchnormStats']):
+                outputsU = self._buildVAE(XU,epsU,Y=None)
+                boundU = outputsU['bound']
+                objfuncU = outputsU['objfunc']
 
-        # set tOutputs and tBatchnormStats namespaces to 'p(x,y)'
-        with self.namespaces('p(x,y)',['tOutputs','tBatchnormStats']):
-            outputsL = self._buildVAE(XL,epsL,Y=YL_onehot)
-            boundL = outputsL['bound']
-            objfuncL = outputsL['objfunc']
+            YL_onehot = T.extra_ops.to_one_hot(YL,self.params['nclasses'],dtype=config.floatX)
 
-        # set tOutputs and tBatchnormStats namespaces to 'q(y|x)'
-        with self.namespaces('q(y|x)',['tOutputs','tBatchnormStats']):
-            _, logbeta = self._build_hx_logbeta(XL)
-            _, crossentropyloss, accuracy = self._build_classifier(logbeta,YL)
+            # set tOutputs and tBatchnormStats namespaces to 'p(x,y)'
+            with self.namespaces('p(x,y)',['tOutputs','tBatchnormStats']):
+                outputsL = self._buildVAE(XL,epsL,Y=YL_onehot)
+                boundL = outputsL['bound']
+                objfuncL = outputsL['objfunc']
+
+            # set tOutputs and tBatchnormStats namespaces to 'q(y|x)'
+            with self.namespaces('q(y|x)',['tOutputs','tBatchnormStats']):
+                _, crossentropyloss, accuracy = self._build_classifier(XL,YL)
 
         # calculate bound, loss, and theano-specific objective function (w/ gradient hacks)
         boundU = boundU.sum()
@@ -81,12 +90,13 @@ class AbstractSemiVAE(AbstractModel):
             # note that objfunc* contains the gradient hack, whereas bound* does not
             objective = anneal['bound']*(objfuncU.sum() + self.params['boundXY_weight']*objfuncL.sum()) + anneal['classifier']*self.params['classifier_weight']*crossentropyloss.sum() 
 
+        # for reporting purposes, normalize some of the outputs
         self.tOutputs.update({
-                                'boundU':boundU,
-                                'boundL':boundL,
-                                'bound':bound,
-                                'classifier':classifier,
-                                'loss':loss,
+                                'boundU':boundU/XU.shape[0],
+                                'boundL':boundL/XU.shape[0],
+                                'bound':bound/XU.shape[0],
+                                'classifier':classifier/XL.shape[0],
+                                'loss':loss/XU.shape[0],
                                 'objective':objective,
                                 'accuracy':accuracy,
                             })
@@ -149,11 +159,6 @@ class AbstractSemiVAE(AbstractModel):
         self._fakeData(XU,XL,YL,epsU,epsL)
 
 
-        # set tWeights and tOutputs to hyperparameters
-        with self.namespaces('hyperparameters',['tWeights','tOutputs']):
-            self._setupHyperparameters()
-            self.tHyperparams = self.tOutputs
-
         # We will have a separate sub-namespace in tWeights for storing batchnorm statistics.
         # This is for two reasons:
         #  1) everything under self.tWeights['weights'] will be optimized against the training
@@ -163,33 +168,44 @@ class AbstractSemiVAE(AbstractModel):
         with self.namespace('batchnorm_statistics','tWeights'):
             self.tBatchnormStats = self.tWeights
 
-        # set the namespace for tWeights to 'weights'
-        with self.namespace('weights','tWeights'):
-            """
-            Build training graph
-            """
-            # set the namespace for tOutputs to 'train'
-            # note that we would not want to set tWeights to 'train',
-            # because the training and evaluating graphs share weights 
-            with self.namespace('train','tOutputs'):
+        """
+        Build training graph
+        """
+        # set the namespace for tOutputs to 'train'
+        # note that we would not want to set tWeights to 'train',
+        # because the training and evaluating graphs share weights 
+        with self.namespace('train','tOutputs'):
+            # set tWeights and tOutputs to hyperparameters 
+            # (these are adjusted during training, thus they go in the 'train' namespace)
+            with self.namespaces('hyperparameters',['tWeights','tOutputs']):
+                self._setupHyperparameters()
+                self.tHyperparams = self.tOutputs
+
+            # set the namespace for tWeights to 'weights'
+            # (this is the same namespace for training, evaluation, and sampling)
+            with self.namespace('weights','tWeights'):
                 train_outputs = self._buildSemiVAE(XU,XL,YL,epsU,epsL)
             
-            """
-            Build evaluation graph
-            """
-            # set the namespace for tOutputs to 'evaluate'
-            # note that we would not want to set tWeights to 'evaluate',
-            # because the training and evaluating graphs share weights 
-            with self.namespace('evaluate','tOutputs'):
+        """
+        Build evaluation graph
+        """
+        # set the namespace for tOutputs to 'evaluate'
+        # note that we would not want to set tWeights to 'evaluate',
+        # because the training and evaluating graphs share weights 
+        with self.namespace('evaluate','tOutputs'):
+            # set the namespace for tWeights to 'weights'
+            # (this is the same namespace for training, evaluation, and sampling)
+            with self.namespace('weights','tWeights'):
                 # set the entire class in evaluate mode 
                 # i.e. this sets self._evaluating=True (instead of being False)
                 with self._evaluate():
                     self._buildSemiVAE(XU,XL,YL,epsU,epsL)
         
-            """
-            Build sampling graph
-            """
-            with self.namespace('samples','tOutputs'):
+        """
+        Build sampling graph
+        """
+        with self.namespace('samples','tOutputs'):
+            with self.namespace('weights','tWeights'):
                 with self._evaluate():
                     Z = T.matrix('Z',dtype=config.floatX)
                     alpha = T.matrix('alpha',dtype=config.floatX)
@@ -259,6 +275,9 @@ class AbstractSemiVAE(AbstractModel):
             with self.namespace('p(x,y)','tOutputs'):
                 self.sample_pxy = theano.function([Z,alpha],self.tOutputs['probs']
                                                   ,name='sample p(x)')
+
+    def post_train_hook(self):
+        self.decay_lr()
 
     def sample_model(self,nsamples=100):
         """

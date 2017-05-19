@@ -54,7 +54,7 @@ parser.add_argument('-model','--model',action='store',default='LogGamma',help='c
 parser.add_argument('-lnmp','--LogitNormalMP',action='store',default=3.,help='LogitNormalMP coefficient',type=float)
 parser.add_argument('-lpr','--learn_prior',action='store',default=False,help='LogGammaMixture learn prior',type=bool)
 parser.add_argument('-lpo','--learn_posterior',action='store',default=False,help='learn posterior (model-specific implementations)',type=bool)
-parser.add_argument('-pc','--posterior_c',action='store',default=-6.,help='scalar value used in adjusting the posterior of the model conditioned on the class label',type=float)
+parser.add_argument('-pv','--posterior_val',action='store',default=-6.,help='scalar value used in adjusting the posterior of the model conditioned on the class label',type=float)
 
 #Optimization
 parser.add_argument('-dset','--dataset', action='store',default = '', help='Dataset', type=str)
