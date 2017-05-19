@@ -1,164 +1,256 @@
-import six.moves.cPickle as pickle
-from collections import OrderedDict
-import sys, time, os
-import numpy as np
-import gzip, warnings
-import theano
-from theano import config
-theano.config.compute_test_value = 'warn'
-from theano.compile.ops import as_op
-from theano.printing import pydotprint
-import theano.tensor as T
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-from theanomodels.utils.optimizer import adam,rmsprop
-from theanomodels.utils.misc import saveHDF5
-from randomvariates import randomLogGamma
-from special import Psi, Polygamma
-from theanomodels.models import BaseModel
-from LogGamma import LogGammaSemiVAE
-import ipdb
+from AbstractSemiVAE import * 
+        
+class ExactM2SemiVAE(AbstractSemiVAE):
 
-class ExactSemiVAE(LogGammaSemiVAE):
-
-    def __init__(self,params,paramFile=None,reloadFile=None):
-        super(ExactSemiVAE,self).__init__(params,paramFile=paramFile,reloadFile=reloadFile)
-
-    def _buildGraph(self, X, eps, betaprior=0.2, Y=None, dropout_prob=0.,add_noise=False,annealKL_Z=None,annealKL_alpha=None,evaluation=False,modifiedBatchNorm=False,graphprefix=None):
-        annealKL=None
+    def _build_generative(self, alpha, Z):
         """
-                                Build VAE subgraph to do inference and emissions
-                (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
+        Build subgraph to estimate conditional params
         """
-        if Y == None:
+        with self.namespaces('p(x|z,alpha)'):
+
+            # first transform Z into another embedding layer
+            with self.namespaces('h(z)'):        
+                Z = self._buildHiddenLayers(Z,diminput=self.params['dim_stochastic']
+                                             ,dimoutput=self.params['p_dim_hidden']
+                                             ,nlayers=self.params['z_generative_layers']
+                                             ,normalization=self.params['p_normlayers'])
+
+            # combine alpha and Z
+            h = T.concatenate([alpha,Z],axis=1)
+
+            # hidden layers for p(x|z,alpha)
+            with self.namespaces('h(h(z),alpha)'):        
+                h = self._buildHiddenLayers(h,diminput=self.params['dim_stochastic']+self.params['nclasses']
+                                             ,dimoutput=self.params['p_dim_hidden']
+                                             ,nlayers=self.params['p_layers']
+                                             ,normalization=self.params['p_normlayers'])
+
+            # calculate emission probability parameters
+            if self.params['data_type']=='real':
+                with self.namespaces('gaussian'):        
+                    with self.namespaces('hidden'):
+                        mu = self._linear(h,diminput=self.params['p_dim_hidden']
+                                           ,dimoutput=self.params['dim_observations'])
+                        logcov2 = self._linear(h,diminput=self.params['p_dim_hidden']
+                                                ,dimoutput=self.params['dim_observations'])
+                    params = {'mu':mu,'logcov2':logcov2}
+            else:
+                with self.namespaces('bernoulli'):        
+                    with self.namespaces('hidden'):
+                        h = self._linear(h,diminput=self.params['p_dim_hidden']
+                                          ,dimoutput=self.params['dim_observations'])
+                        p = T.nnet.sigmoid(h)
+                    params = {'p':p}
+            return params
+
+    def _build_classifier(self, XL, Y):
+        _, logbeta = self._build_inference_alpha(XL)
+        probs = T.nnet.softmax(logbeta)
+        #T.nnet.categorical_crossentropy returns a vector of length batch_size
+        loss= T.nnet.categorical_crossentropy(probs,Y) 
+        accuracy = T.eq(T.argmax(probs,axis=1),Y)
+        return probs, loss, accuracy
+
+    def _build_inference_alpha(self, X): 
+        """
+        return h(x), logbeta(h(x))
+        """
+        if not self._evaluating:
+            X = self._dropout(X,self.params['input_dropout'])
+            self._p(('Inference with dropout :%.4f')%(self.params['input_dropout']))
+
+
+        with self.namespaces('h(x)'):
+            hx = self._buildHiddenLayers(X,diminput=self.params['dim_observations']
+                                          ,dimoutput=self.params['q_dim_hidden']
+                                          ,nlayers=self.params['q_layers'])
+
+        with self.namespaces('h_logbeta'):
+            h_logbeta = self._buildHiddenLayers(hx,diminput=self.params['q_dim_hidden']
+                                                  ,dimoutput=self.params['q_dim_hidden']
+                                                  ,nlayers=self.params['alpha_inference_layers'])
+
+        if not self._evaluating:
+            h_logbeta = self._dropout(h_logbeta,self.params['dropout_logbeta']) 
+
+        with self.namespaces('logbeta'):
+            logbeta = self._linear(h_logbeta,diminput=self.params['q_dim_hidden']
+                                            ,dimoutput=self.params['nclasses'])
+
+        #clip to avoid nans
+        logbeta = T.clip(logbeta,-5,5)
+
+        self.tOutputs['logbeta'] = logbeta
+        return hx, logbeta
+
+    def _build_inference_Z(self,alpha,hx):
+        """
+        return q(z|alpha,h(x))
+        """
+
+        if not self._evaluating:
+            hx = self._dropout(hx,self.params['dropout_hx'])
+
+        with self.namespaces('hz(hx)'):
+            hz = self._buildHiddenLayers(hx,diminput=self.params['q_dim_hidden']
+                                           ,dimoutput=self.params['q_dim_hidden']
+                                           ,nlayers=self.params['hz_inference_layers'])
+
+        with self.namespaces('hz(alpha)'):
+            alpha_embed = self._linear(alpha,diminput=self.params['nclasses']
+                                            ,dimoutput=self.params['q_dim_hidden'])
+            
+        # concatenate hz and alpha_embed
+        hz_alpha = T.concatenate([alpha_embed,hz],axis=1) 
+
+        # infer mu and logcov2 for q(z|alpha,x)
+        with self.namespaces("q(z|alpha,x)"):
+            q_Z_h = self._buildHiddenLayers(hz_alpha,diminput=2*self.params['q_dim_hidden']
+                                                    ,dimoutput=self.params['q_dim_hidden']
+                                                    ,nlayers=self.params['z_inference_layers'])
+
+            diminput = self.params['q_dim_hidden']
+            dimoutput = self.params['dim_stochastic']
+
+            with self.namespaces('mu'):
+                mu = self._linear(q_Z_h,diminput=self.params['q_dim_hidden']
+                                       ,dimoutput=self.params['dim_stochastic'])
+            with self.namespaces('logcov2'):
+                logcov2 = self._linear(q_Z_h,diminput=self.params['q_dim_hidden']
+                                              ,dimoutput=self.params['dim_stochastic'])
+
+        return mu, logcov2
+
+    def _buildVAE(self, X, eps, Y=None):
+        """
+        Build VAE subgraph to do inference and emissions 
+        (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
+
+        returns a bunch of VAE outputs
+        """
+        if Y is None:
             self._p(('Building graph for lower bound of logp(x)'))
         else:
             self._p(('Building graph for lower bound of logp(x,y)'))
-        hx, logbeta = self._buildRecognitionBase(X,dropout_prob,evaluation,modifiedBatchNorm,graphprefix)
-        suffix = '_e' if evaluation else '_t'
-        self._addVariable(graphprefix+'_h(x)'+suffix,hx,ignore_warnings=True)
+
+        # build h(x) and logbeta
+        hx, logbeta = self._build_inference_alpha(X)
 
         #we don't actually use eps here, but do the following to include it in graph computation
         bs = eps.shape[0]
-        nc = self.params['nclasses']
-        if Y != None:
-            nllY = bs*theano.shared(np.log(nc))
-            mu, logcov = self._build_qz(Y,hx,evaluation,modifiedBatchNorm,graphprefix)
-            self._addVariable(graphprefix+'_mu'+suffix,mu,ignore_warnings=True)
-            self._addVariable(graphprefix+'_logcov2'+suffix,logcov,ignore_warnings=True)
+
+        if Y is not None: 
+            """
+            -logp(x,y)
+            """
+            nllY = bs*theano.shared(np.log(self.params['nclasses']))
+
+            # gaussian parameters (Z)
+            mu, logcov2 = self._build_inference_Z(Y,hx)
+
+            # gaussian variates
             eps = self.srng.normal(mu.shape,0,1,dtype=config.floatX) 
-            Z, KL_Z = self._variationalGaussian(mu,logcov,eps)
-            #add noise to assist in training
-            if add_noise:
+            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+
+            # adding noise during training usually helps performance
+            if not self._evaluating:
                 Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
-            #generative model
-            _, nllX = self._buildEmission(Y, Z, X, graphprefix, evaluation=evaluation,modifiedBatchNorm=modifiedBatchNorm)
+
+            # generative model
+            paramsX = self._build_generative(Y, Z)
+            if self.params['data_type']=='real':
+                nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
+            else:
+                nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
+
             KL = KL_Z.sum()
             NLL = nllX.sum() + nllY.sum()
         else:
+            """
+            -logp(x)
+            """
+            # KL of categorical
             probs = T.nnet.softmax(logbeta)
             logprobs = T.log(probs)
-            KL_Y = T.sum(probs*logprobs,axis=1)+np.log(nc)
+            KL_Y = T.sum(probs*logprobs,axis=1) + np.log(self.params['nclasses'])
 
-            y = [T.extra_ops.to_one_hot(T.extra_ops.repeat(theano.shared(i),repeats=hx.shape[0]),nb_class=nc) for i in range(nc)]
+            # Enumerate all classes 
+            y = [T.extra_ops.to_one_hot(T.extra_ops.repeat(theano.shared(i),repeats=hx.shape[0]),nb_class=self.params['nclasses']) for i in range(self.params['nclasses'])]
             y = T.concatenate(y,axis=0)
-            #hx_repeat = T.extra_ops.repeat(hx,nc,axis=0)
-            #X_repeat = T.extra_ops.repeat(X,nc,axis=0)
-            hx_repeat = T.tile(hx.T,nc,ndim=2).T
-            X_repeat = T.tile(X.T,nc,ndim=2).T
 
-            mu, logcov = self._build_qz(y,hx_repeat,evaluation,modifiedBatchNorm,graphprefix)
-            self._addVariable(graphprefix+'_mu'+suffix,mu,ignore_warnings=True)
-            self._addVariable(graphprefix+'_logcov2'+suffix,logcov,ignore_warnings=True)
+            # repeat for each class (do this to preserve batchnorm stats
+            # over the class enumeration)
+            hx_repeat = T.tile(hx.T,self.params['nclasses'],ndim=2).T
+            X_repeat = T.tile(X.T,self.params['nclasses'],ndim=2).T
+
+            # gaussian parameters (Z)
+            mu, logcov2 = self._build_inference_Z(y,hx_repeat)
+
+            # gaussian variates
             eps = self.srng.normal(mu.shape,0,1,dtype=config.floatX) 
-            Z, KL_Z = self._variationalGaussian(mu,logcov,eps)
-            #add noise to assist in training
-            if add_noise:
+            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+
+            # adding noise during training usually helps performance
+            if not self._evaluating:
                 Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
-            #generative model
-            _, nllX = self._buildEmission(y, Z, X_repeat, graphprefix, evaluation=evaluation,modifiedBatchNorm=modifiedBatchNorm)
-            
-            #evaluate full expectation
+
+            # generative model
+            paramsX = self._build_generative(y, Z)
+            if self.params['data_type']=='real':
+                nllX = self._nll_gaussian(X_repeat,**paramsX).sum(axis=1)
+            else:
+                nllX = self._nll_bernoulli(X_repeat,**paramsX).sum(axis=1)
+
+            # evaluate kl and nll over all states of Y
             kl = 0
             nll = 0 
             negkl = 0
-            #check=  KL_Z.reshape((nc,bs)).T.tag.test_value*probs.tag.test_value
-            #could use reshape, but better safe than sorry
-            for c in range(nc):
+            for c in range(self.params['nclasses']):
                 start_idx = c*bs
                 end_idx = (c+1)*bs
                 kl += probs[:,c]*KL_Z[start_idx:end_idx].ravel()
                 nll += probs[:,c]*nllX[start_idx:end_idx].ravel()
-                if not self.params['negKL']:
-                    kl += probs[:,c]*KL_Z[start_idx:end_idx].ravel()
-                else:
-                    kl += theano.gradient.disconnected_grad(probs[:,c])*KL_Z[start_idx:end_idx].ravel()
-                    negkl += -2*probs[:,c]*theano.gradient.disconnected_grad(KL_Z[start_idx:end_idx].ravel())
+                #kl += probs[:,c]*KL_Z[start_idx:end_idx].ravel()
             KL_Z = kl
             nllX = nll
             KL = KL_Y.sum() + KL_Z.sum()
             NLL = nllX.sum() 
 
-        bound = KL + NLL
-        #objective function
-        if evaluation:
-            objfunc = bound
-        else:
-            if annealKL == None:
-                objfunc = bound
+        bound = KL + NLL 
+
+        # objective function
+        if self._evaluating:
+            objfunc = bound 
+        else: 
+            # annealing (training only)
+            anneal = self.tHyperparams['annealing']
+
+            # annealed objective function
+            if Y is None:
+                objfunc = anneal['KL_alpha']*KL_Y.sum() + anneal['KL_Z']*KL_Z.sum() + NLL
             else:
-                #annealing
-                objfunc = annealKL*KL + NLL
-            if Y==None and self.params['negKL']:
-                objfunc += negkl.sum()
+                objfunc = anneal['KL_Z']*KL_Z.sum() + NLL
 
-        outputs = {
-                   'Z':Z,
-                   'logbeta':logbeta,
-                   'bound':bound,
-                   'objfunc':objfunc,
-                   'nllX':nllX,
-                   'KL_Z':KL_Z,
-                   'KL':KL,
-                   'NLL':NLL}
-        if Y!=None:
-            outputs['nllY']=nllY
+        self.tOutputs.update({
+                                'Z':Z,
+                                'mu':mu,
+                                'logcov2':logcov2,
+                                'bound':bound,
+                                'objfunc':objfunc,
+                                'nllX':nllX,
+                                'KL_Z':KL_Z,
+                                'KL':KL,
+                                'NLL':NLL,
+                             })
+        if Y is not None:
+            self.tOutputs.update({
+                                'nllY':nllY
+                                })
         else:
-            outputs['KL_Y']=KL_Y
+            self.tOutputs.update({
+                                'KL_Y':KL_Y
+                                })
 
-        return outputs
-
-
-    def _getModelOutputs(self,outputsU,outputsL,suffix=''):
-        my_outputs = {
-                         'KL_Y_U':outputsU['KL_Y'].sum(),
-                         'nllX_U':outputsU['nllX'].sum(),
-                         'NLL_U':outputsU['NLL'].sum(),
-                         'KL_U':outputsU['KL'].sum(),
-                         'KL_Z_U':outputsU['KL_Z'].sum(),
-                         'nllY':outputsL['nllY'].sum(),
-                         'nllX_L':outputsL['nllX'].sum(),
-                         'NLL_L':outputsL['NLL'].sum(),
-                         'KL_L':outputsL['KL'].sum(),
-                         'KL_Z_L':outputsL['KL_Z'].sum(),
-                         'logbeta_U':outputsU['logbeta'],
-                         'logbeta_L':outputsL['logbeta'],
-                         'mu_U':self._tVariables['U_mu'+suffix],
-                         'logcov2_U':self._tVariables['U_logcov2'+suffix],
-                         'mu_L':self._tVariables['L_mu'+suffix],
-                         'logcov2_L':self._tVariables['L_logcov2'+suffix]
-                         }
-
-        if self.params['bilinear']:
-            my_outputs['hz_U'] = self._tVariables['U_hz'+suffix]
-            my_outputs['hz_L'] = self._tVariables['L_hz'+suffix]
-            my_outputs['hz_W_alpha_U'] = self._tVariables['U_hz_W_alpha'+suffix]
-            my_outputs['hz_W_alpha_L'] = self._tVariables['L_hz_W_alpha'+suffix]
-            my_outputs['p_Z_embedded_U'] = self._tVariables['U_p_Z_embedded'+suffix]
-            my_outputs['p_Z_embedded_L'] = self._tVariables['L_p_Z_embedded'+suffix]
-            my_outputs['p_alpha_Z_input_W_U'] = self._tVariables['U_p_alpha_Z_input_W'+suffix]
-            my_outputs['p_alpha_Z_input_W_L'] = self._tVariables['L_p_alpha_Z_input_W'+suffix]
-        return my_outputs
-
-
+        return self.tOutputs
 
 

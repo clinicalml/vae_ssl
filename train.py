@@ -62,9 +62,9 @@ with logger.send_stderr_to_logger():
             elif params['model'] == 'approxM2':
                 from models.approxM2 import SemiVAE
                 SSL_VAE_CLASS = SemiVAE
-            elif params['model'] == 'exactM2':
-                from models.exactM2 import ExactSemiVAE
-                SSL_VAE_CLASS = ExactSemiVAE
+            elif params['model'] == 'ExactM2':
+                from models.exactM2 import ExactM2SemiVAE
+                SSL_VAE_CLASS = ExactM2SemiVAE
             elif params['model'] == 'exactM2_debug':
                 from models.vae_ssl_exactM2 import ExactSemiVAE
                 SSL_VAE_CLASS = ExactSemiVAE
