@@ -38,6 +38,13 @@ class AbstractSemiVAE(AbstractModel):
             ('hyperparameters/annealing/KL_alpha',lambda x:np.mean(x[-1]),'%0.2e (last)'),
         ]
 
+    def _build_classifier(self, XL, Y):
+        """
+        calculate -log(q(Y|XL))
+
+        return probs, loss, accuracy
+        """
+        pass
 
     def _buildSemiVAE(self,XU,XL,YL,epsU,epsL):
         """

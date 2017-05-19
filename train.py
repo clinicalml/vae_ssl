@@ -59,11 +59,11 @@ with logger.send_stderr_to_logger():
             elif params['model'] == 'DirichletSeparate':
                 from models.separate import LogGammaSemiVAESeparate
                 SSL_VAE_CLASS = LogGammaSemiVAESeparate
-            elif params['model'] == 'approxM2':
-                from models.approxM2 import SemiVAE
-                SSL_VAE_CLASS = SemiVAE
+            elif params['model'] == 'ApproxM2':
+                from models.ApproxM2 import ApproxM2SemiVAE
+                SSL_VAE_CLASS = ApproxM2SemiVAE
             elif params['model'] == 'ExactM2':
-                from models.exactM2 import ExactM2SemiVAE
+                from models.ExactM2 import ExactM2SemiVAE
                 SSL_VAE_CLASS = ExactM2SemiVAE
             elif params['model'] == 'exactM2_debug':
                 from models.vae_ssl_exactM2 import ExactSemiVAE

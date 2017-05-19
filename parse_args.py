@@ -50,7 +50,7 @@ parser.add_argument('-sbn','--separateBNrunningstats', action='store',default = 
 parser.add_argument('-ln','--layernorm', action='store',default = False, help='Layer Normalization',type=bool)
 parser.add_argument('-pn','--p_normlayers', action='store',default = False, help='Allow normalization layers in Generative Model', type=bool)
 
-parser.add_argument('-model','--model',action='store',default='LogGamma',help='choose type of graphical model',choices=['LogGamma','ExactM2','approxM2','MixDirPrior','LogisticNormal','LogisticNormalMP','DirichletMixture','Dirichlet2','LogGammaMixture','LogGammaLatentMixture','LogGammaReverse','DirichletSeparate','LogisticNormal_fp','GM','GM2','LNprd','GumbelSoftmaxM2','STGumbelSoftmaxM2','LogisticNormalM2','STLogisticNormalM2','GumbelSoftmax','STGumbelSoftmax','LogisticNormal_warped','STLogisticNormal_warped'])
+parser.add_argument('-model','--model',action='store',default='LogGamma',help='choose type of graphical model',choices=['LogGamma','ExactM2','ApproxM2','MixDirPrior','LogisticNormal','LogisticNormalMP','DirichletMixture','Dirichlet2','LogGammaMixture','LogGammaLatentMixture','LogGammaReverse','DirichletSeparate','LogisticNormal_fp','GM','GM2','LNprd','GumbelSoftmaxM2','STGumbelSoftmaxM2','LogisticNormalM2','STLogisticNormalM2','GumbelSoftmax','STGumbelSoftmax','LogisticNormal_warped','STLogisticNormal_warped'])
 parser.add_argument('-lnmp','--LogitNormalMP',action='store',default=3.,help='LogitNormalMP coefficient',type=float)
 parser.add_argument('-lpr','--learn_prior',action='store',default=False,help='LogGammaMixture learn prior',type=bool)
 parser.add_argument('-lpo','--learn_posterior',action='store',default=False,help='learn posterior (model-specific implementations)',type=bool)
