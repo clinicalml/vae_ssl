@@ -1,8 +1,8 @@
 import os
 
-exptdir = '001_GumbelSoftmaxM2'
+exptdir = 'LogGamma'
 script = 'train.py'
-rootdir = 'output'
+rootdir = 'output/002_10seeds/'
 session = exptdir
 savedir = os.path.join(rootdir,exptdir)
 
@@ -10,7 +10,9 @@ theano_flags='device=gpu{gpuid}'
 run_flags=[#'--savedir=%s'%savedir,
            '--epochs=300',
            '-sfreq 150',
+           '-betaprior 0.2',
            '--batchnorm=True',
+           #'--negKL=True',
            '--annealKL_Z=1',
            '--annealKL_alpha=1',
            '--annealCW=50000',
@@ -23,16 +25,24 @@ run_flags=[#'--savedir=%s'%savedir,
            #'-cw 128',
            '-lr 5e-4',
            '-ds 50',
-           '-model GumbelSoftmaxM2',
+           '-model LogGamma',
            #'--learn_posterior=True',
-           '-seed 1',
+           #'-seed 1',
            '-rv 0.1']
-vary_flags = {
-    'cw128_seed1':'-cw 128 -seed 1 -sharpening 1e1'
+
+seeds = range(1,11)
+
+flags = {
+    'cw128':'-cw 128'
 }
 
+vary_flags = {}
+for f in flags:
+    for s in seeds:
+        vary_flags['%s_seed%d'%(f,s)] = '%s -seed %d' % (flags[f],s)
+
 numgpus = 2
-gpuctr = 1
+gpuctr = 0
 for tag,val in vary_flags.iteritems():
     gpu = gpuctr % numgpus
     gpuctr += 1

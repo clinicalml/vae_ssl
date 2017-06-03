@@ -418,6 +418,7 @@ class AbstractModel(BaseModel, object):
         for l in range(nlayers):
             with self.namespaces('layer'+str(l)):
                 h = self._linear(h,diminput,window*dimoutput,**kwargs)
+                y = h
                 if self.params['batchnorm'] and normalization:
                     h = self.batchnorm(h,window*dimoutput,output_axis=1,ndims=2,**kwargs)
                 elif self.params['layernorm'] and normalization:
@@ -451,8 +452,6 @@ class AbstractModel(BaseModel, object):
                 batch_outputs = runfunc(**minibatch)
                 # some of these are CudaNDArray, so convert to NDarray
                 batch_outputs = NestD(batch_outputs).apply(np.asarray)
-                #import ipdb
-                #ipdb.set_trace()
                 epoch_outputs.append(batch_outputs)
                 pb.update(i+1,self.progressBarUpdate(epoch_outputs))
             # if logfile exists, write output to it

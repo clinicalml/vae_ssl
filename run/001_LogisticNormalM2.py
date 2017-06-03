@@ -1,6 +1,6 @@
 import os
 
-exptdir = '001_GumbelSoftmaxM2'
+exptdir = '001_LogisticNormalM2'
 script = 'train.py'
 rootdir = 'output'
 session = exptdir
@@ -23,7 +23,7 @@ run_flags=[#'--savedir=%s'%savedir,
            #'-cw 128',
            '-lr 5e-4',
            '-ds 50',
-           '-model GumbelSoftmaxM2',
+           '-model LogisticNormalM2',
            #'--learn_posterior=True',
            '-seed 1',
            '-rv 0.1']

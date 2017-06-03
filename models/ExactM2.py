@@ -117,11 +117,10 @@ class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
             # evaluate kl and nll over all states of Y
             kl = 0
             nll = 0 
-            negkl = 0
             for c in range(self.params['nclasses']):
                 start_idx = c*bs
                 end_idx = (c+1)*bs
-                kl += probs[:,c]*KL_Z[start_idx:end_idx].ravel()
+                kl += 2*probs[:,c]*KL_Z[start_idx:end_idx].ravel()
                 nll += probs[:,c]*nllX[start_idx:end_idx].ravel()
                 #kl += probs[:,c]*KL_Z[start_idx:end_idx].ravel()
             KL_Z = kl
