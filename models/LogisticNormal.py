@@ -2,34 +2,34 @@ from AbstractSingleStochasticLayerSemiVAE import *
 
 class LogisticNormalSemiVAE(AbstractSingleStochasticLayerSemiVAE):
 
-    def _build_inference_alpha(self, X): 
+    def build_inference_alpha(self, X): 
         """
         return h(x), mu(h(x)), logcov2(h(x))
         """
         if not self._evaluating:
-            X = self._dropout(X,self.params['input_dropout'])
+            X = self.dropout(X,self.params['input_dropout'])
             self._p(('Inference with dropout :%.4f')%(self.params['input_dropout']))
 
 
         with self.namespaces('h(x)'):
-            hx = self._buildHiddenLayers(X,diminput=self.params['dim_observations']
+            hx = self.build_hidden_layers(X,diminput=self.params['dim_observations']
                                           ,dimoutput=self.params['q_dim_hidden']
                                           ,nlayers=self.params['q_layers'])
 
         with self.namespaces('mu(h(x)), logcov2(h(x))'):
-            h_alpha = self._buildHiddenLayers(hx,diminput=self.params['q_dim_hidden']
+            h_alpha = self.build_hidden_layers(hx,diminput=self.params['q_dim_hidden']
                                                 ,dimoutput=self.params['q_dim_hidden']
                                                 ,nlayers=self.params['alpha_inference_layers'])
 
             if not self._evaluating:
-                h_alpha = self._dropout(h_alpha,self.params['dropout_logbeta']) 
+                h_alpha = self.dropout(h_alpha,self.params['dropout_logbeta']) 
 
             with self.namespaces('mu'):
-                mu = self._linear(h_alpha,diminput=self.params['q_dim_hidden']
+                mu = self.linear(h_alpha,diminput=self.params['q_dim_hidden']
                                          ,dimoutput=self.params['nclasses'])
 
             with self.namespaces('logcov2'):
-                logcov2 = self._linear(h_alpha,diminput=self.params['q_dim_hidden']
+                logcov2 = self.linear(h_alpha,diminput=self.params['q_dim_hidden']
                                               ,dimoutput=self.params['nclasses'])
 
         self.tOutputs['mu'] = mu
@@ -37,7 +37,7 @@ class LogisticNormalSemiVAE(AbstractSingleStochasticLayerSemiVAE):
         return hx, mu, logcov2
 
 
-    def _buildVAE(self, X, eps, Y=None):
+    def build_vae(self, X, eps, Y=None):
         """
         Build VAE subgraph to do inference and emissions 
         (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
@@ -50,7 +50,7 @@ class LogisticNormalSemiVAE(AbstractSingleStochasticLayerSemiVAE):
             self._p(('Building graph for lower bound of logp(x,y)'))
 
         # build h(x) and mu_alpha, logcov2_alpha
-        hx, mu_alpha, logcov2_alpha = self._build_inference_alpha(X)
+        hx, mu_alpha, logcov2_alpha = self.build_inference_alpha(X)
 
         if Y is not None: 
             """
@@ -58,14 +58,14 @@ class LogisticNormalSemiVAE(AbstractSingleStochasticLayerSemiVAE):
             """
             if self.params['learn_posterior']:
                 with self.namespaces('q(alpha|y)'):            
-                    mu_alpha += T.nnet.softplus(self._addWeights('mu_alpha|y',np.asarray(1.)))*Y
-                    logcov2_alpha += self._linear(self._addWeights('logcov2_alpha|y',np.asarray(1.)))*Y
+                    mu_alpha += T.nnet.softplus(self.add_weights('mu_alpha|y',np.asarray(1.)))*Y
+                    logcov2_alpha += self.linear(self.add_weights('logcov2_alpha|y',np.asarray(1.)))*Y
             else:
                 mu_alpha += T.nnet.softplus(self.params['posterior_val'])*Y
 
             # gaussian variates
             eps_alpha = self.srng.normal(mu_alpha.shape,1,dtype=config.floatX) 
-            logit_alpha, KL_alpha = self._variationalGaussian(mu_alpha,logcov2_alpha,eps_alpha)
+            logit_alpha, KL_alpha = self.variational_gaussian(mu_alpha,logcov2_alpha,eps_alpha)
 
             # derive logistic-normal
             alpha = T.nnet.softmax(logit_alpha*self.tHyperparams['sharpening'])
@@ -79,27 +79,27 @@ class LogisticNormalSemiVAE(AbstractSingleStochasticLayerSemiVAE):
             """
             # gaussian variates
             eps_alpha = self.srng.normal(mu_alpha.shape,1,dtype=config.floatX) 
-            logit_alpha, KL_alpha = self._variationalGaussian(mu_alpha,logcov2_alpha,eps_alpha)
+            logit_alpha, KL_alpha = self.variational_gaussian(mu_alpha,logcov2_alpha,eps_alpha)
 
             # derive logistic-normal
             alpha = T.nnet.softmax(logit_alpha*self.tHyperparams['sharpening'])
 
         # parameters of Z 
-        mu, logcov2 = self._build_inference_Z(alpha,hx)
+        mu, logcov2 = self.build_inference_Z(alpha,hx)
 
         # gaussian variates
-        Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+        Z, KL_Z = self.variational_gaussian(mu,logcov2,eps)
 
         if not self._evaluating:
             # adding noise during training usually helps performance
             Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
 
         # generative model
-        paramsX = self._build_generative(alpha, Z)
+        paramsX = self.build_generative(alpha, Z)
         if self.params['data_type']=='real':
-            nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
+            nllX = self.nll_gaussian(X,**paramsX).sum(axis=1)
         else:
-            nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
+            nllX = self.nll_bernoulli(X,**paramsX).sum(axis=1)
 
         # negative of the lower bound
         KL = KL_alpha.sum() + KL_Z.sum()
@@ -142,8 +142,8 @@ class LogisticNormalSemiVAE(AbstractSingleStochasticLayerSemiVAE):
 
         return self.tOutputs
 
-    def _build_classifier(self, XL, Y):
-        _, mu_alpha, logcov2_alpha = self._build_inference_alpha(XL)
+    def build_classifier(self, XL, Y):
+        _, mu_alpha, logcov2_alpha = self.build_inference_alpha(XL)
         if self._evaluating:
             # this is a hack, but it works because we generally only
             # care about accuracy when evaluating semi-supervised MNIST
@@ -151,7 +151,7 @@ class LogisticNormalSemiVAE(AbstractSingleStochasticLayerSemiVAE):
         else:
             # gaussian variates
             eps_alpha = self.srng.normal(mu_alpha.shape,1,dtype=config.floatX) 
-            logit_alpha, KL_alpha = self._variationalGaussian(mu_alpha,logcov2_alpha,eps_alpha)
+            logit_alpha, KL_alpha = self.variational_gaussian(mu_alpha,logcov2_alpha,eps_alpha)
 
             # derive logistic-normal
             alpha = T.nnet.softmax(logit_alpha*self.tHyperparams['sharpening'])

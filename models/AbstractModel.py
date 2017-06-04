@@ -43,7 +43,7 @@ class AbstractModel(BaseModel, object):
                                            paramFile=paramFile,
                                            reloadFile=reloadDir)
 
-    def getNestD(self,attr_name):
+    def get_nestd(self,attr_name):
         if not hasattr(self,attr_name):
             setattr(self,attr_name,NestD())
         attr = getattr(self,attr_name)
@@ -68,7 +68,7 @@ class AbstractModel(BaseModel, object):
         ```
         """
         #do this stuff before executing stuff under the with statement:
-        attr = self.getNestD(attr_name)
+        attr = self.get_nestd(attr_name)
         if key not in attr:
             attr[key] = NestD()
         temp = attr
@@ -120,7 +120,7 @@ class AbstractModel(BaseModel, object):
 
     def print_namespace(self,attr_name):
         assert hasattr(self,attr_name),'self does not have attribute %s' % attr_name
-        attr = self.getNestD(attr_name)
+        attr = self.get_nestd(attr_name)
         assert isinstance(attr,NestD),'%s must be a type of NestD)' % attr
         for k,v in sorted(attr.walk()):
             path = '/'.join(k)
@@ -135,13 +135,13 @@ class AbstractModel(BaseModel, object):
             print print_str
 
     @contextmanager
-    def _evaluate(self):
+    def evaluate(self):
         """
         sets self._evaluating=True
 
         example usage:
         ```
-        with self._evaluate():
+        with self.evaluate():
             #do stuff
         ```
         """
@@ -163,9 +163,9 @@ class AbstractModel(BaseModel, object):
         yield
         setattr(self,attr_name,temp)
 
-    def _countParams(self,params=None):
+    def count_params(self,params=None):
         """
-        _countParams: Count the number of parameters in the model that will be optimized
+        count_params: Count the number of parameters in the model that will be optimized
         """
         if params==None:
             self.nParams    = 0
@@ -182,7 +182,7 @@ class AbstractModel(BaseModel, object):
             return nParams
             
 
-    def _addShared(self,name,data,namespace_name,ignore_warnings=IGNORE_WARNINGS,**kwargs):
+    def add_shared(self,name,data,namespace_name,ignore_warnings=IGNORE_WARNINGS,**kwargs):
         """
         Add theano shared to namespace 
         
@@ -199,7 +199,7 @@ class AbstractModel(BaseModel, object):
                 warnings.warn(name+" found in tWeights. No action taken")
         return namespace[name]
 
-    def _addWeights(self, name, data, **kwargs):
+    def add_weights(self, name, data, **kwargs):
         """
         Add to tWeights (under current namespace)
         
@@ -207,9 +207,9 @@ class AbstractModel(BaseModel, object):
         e.g. if current namespace is tWeights['weights']['layer1'] and weight has name 'W'
         the fullpath will be 'weights/layer1/W'
         """
-        return self._addShared(name,data,'tWeights',**kwargs)
+        return self.add_shared(name,data,'tWeights',**kwargs)
 
-    def _addUpdate(self, var, data, ignore_warnings=False):
+    def add_update(self, var, data, ignore_warnings=False):
         """
         Add an update for tWeights
         """
@@ -219,7 +219,7 @@ class AbstractModel(BaseModel, object):
         else:
             self.updates.append((var,data))
 
-    def _getModelParams(self, restrict = ''):
+    def get_model_params(self, restrict = ''):
         """
         Return list of model parameters to take derivatives with respect to
         """
@@ -239,9 +239,9 @@ class AbstractModel(BaseModel, object):
         self._p('Other params:\n' + '\n'.join(othernames))
         return paramlist
 
-    def _dropout(self, X, p=0.):
+    def dropout(self, X, p=0.):
         """
-        _dropout : X is the input, p is the dropout probability
+        dropout : X is the input, p is the dropout probability
         Do not need to do anything in the case of no dropout since we divide by retain prob.
         """
         if p > 0:
@@ -262,11 +262,11 @@ class AbstractModel(BaseModel, object):
         assert isinstance(dimoutput,int), 'dimoutput must be an int'
 
         init_shape = (dimoutput,)
-        gamma = self._addWeights('bn_gamma',self._getWeight(init_shape,**kwargs))
+        gamma = self.add_weights('bn_gamma',self._getWeight(init_shape,**kwargs))
         
-        running_mean = self._addShared('bn_running_mean',np.zeros(init_shape),'tBatchnormStats')
-        running_var = self._addShared('bn_running_var',np.ones(init_shape),'tBatchnormStats')
-        mom = self._addShared('bn_momentum',np.asarray(0),'tBatchnormStats')
+        running_mean = self.add_shared('bn_running_mean',np.zeros(init_shape),'tBatchnormStats')
+        running_var = self.add_shared('bn_running_var',np.ones(init_shape),'tBatchnormStats')
+        mom = self.add_shared('bn_momentum',np.asarray(0),'tBatchnormStats')
 
         #gamma = gamma.dimshuffle(bn_shape)
 
@@ -290,55 +290,47 @@ class AbstractModel(BaseModel, object):
 
             #Update running stats
             m = T.cast(x.shape[0],config.floatX)
-            self._addUpdate(running_mean, mom*running_mean+(1.-mom)*batch_mean)
-            self._addUpdate(running_var, mom*running_var+(1.-mom)*batch_var*m/(m-1))
+            self.add_update(running_mean, mom*running_mean+(1.-mom)*batch_mean)
+            self.add_update(running_var, mom*running_var+(1.-mom)*batch_var*m/(m-1))
             #momentum will be 0 in the first iteration, and momentum in all subsequent iters
-            self._addUpdate(mom,momentum)
+            self.add_update(mom,momentum)
 
         z = _gamma*y
         if bias:
-            beta = self._addWeights('bn_beta',self._getWeight(init_shape,**kwargs))
+            beta = self.add_weights('bn_beta',self._getWeight(init_shape,**kwargs))
             _beta = beta.dimshuffle(bn_shape)
             z = z+_beta
 
         return z
         
-    def _linear(self, x, diminput, dimoutput, bias=True, **kwargs):
+    def linear(self, x, diminput, dimoutput, bias=True, **kwargs):
         """
         * return T.dot(x,W)+b 
         * set bias=False to remove bias
         """
-        W = self._addWeights('W',self._getWeight((diminput,dimoutput),**kwargs))
+        W = self.add_weights('W',self._getWeight((diminput,dimoutput),**kwargs))
         y = T.dot(x,W)
         if bias:
-            b = self._addWeights('b',self._getWeight((dimoutput,)))
+            b = self.add_weights('b',self._getWeight((dimoutput,)))
             y = y + b
     
         #If only doing a dot product return as is
         return y
-
-    def _LinearNL(self,*args,**kwargs): 
-        """
-        _LinearNL : if onlyLinear: return T.dot(x,W)+b else return NL(T.dot(inp,W)+b)
-        * set bias=False to remove bias
-        """
-        y = self._linear(*args,**kwargs)
-        return self._applyNL(y)
         
-    def _bilinear(self,x,y,dimx,dimy,dimoutput,bias=True,**kwargs):
+    def bilinear(self,x,y,dimx,dimy,dimoutput,bias=True,**kwargs):
         """
         return xTWy+bW should have shape (output_dim, x.shape[1], y.shape[1])
         """
-        W = self._addWeights('W',self._getWeight((dimoutput,dimx,dimy),**kwargs))
+        W = self.add_weights('W',self._getWeight((dimoutput,dimx,dimy),**kwargs))
         xW = T.dot(x,W)
         xWy = T.sum(xW*y.reshape((y.shape[0],1,-1)),axis=2)
         if bias:
-            b = self._addWeights('b',self._getWeight((dimoutput,),**kwargs))
+            b = self.add_weights('b',self._getWeight((dimoutput,),**kwargs))
             xWy = xWy+b
         return xWy
 
     
-    def _variationalGaussian(self, mu, logcov, eps):
+    def variational_gaussian(self, mu, logcov, eps):
         """
                             KL divergence between N(0,I) and N(mu,exp(logcov))
         """
@@ -347,18 +339,18 @@ class AbstractModel(BaseModel, object):
         KL = 0.5*T.sum(-logcov -1 + T.exp(logcov) +mu**2 ,axis=1,keepdims=True)
         return z,KL
 
-    def _nll_gaussian(self,X,mu,logcov2):
+    def nll_gaussian(self,X,mu,logcov2):
         return 0.5*(np.log(2*np.pi)+logcov2+((X-mu)/T.exp(0.5*logcov2))**2)
 
-    def _nll_bernoulli(self,X,p):
+    def nll_bernoulli(self,X,p):
         return T.nnet.binary_crossentropy(p,X)
         
 
-    def _setupOptimizer(self,objective,namespace,lr,optim_method='adam',
+    def setup_optimizer(self,objective,namespace,lr,optim_method='adam',
                         reg_value=0,reg_type='l2',
                         divide_grad=True,grad_norm=None,**kwargs):
         """
-        _setupOptimizer :   Wrapper for calling optimizer specified for the model. Internally also updates
+        setup_optimizer :   Wrapper for calling optimizer specified for the model. Internally also updates
                             the list of shared optimization variables in the model
         Calls self.optimizer to minimize "cost" wrt "params" using learning rate "lr", the other arguments are passed
         as is to the optimizer
@@ -377,7 +369,7 @@ class AbstractModel(BaseModel, object):
         weights = namespace.leaves(sort_keypaths=True)
 
         #count number of weights for gradient normalization
-        nparams = float(self._countParams(weights))
+        nparams = float(self.count_params(weights))
 
         #Add regularization
         if reg_value is not None and reg_value > 0:
@@ -407,7 +399,7 @@ class AbstractModel(BaseModel, object):
             self.tOptWeights = opt_params
         return optimizer_up, norm_list, objective
 
-    def _buildHiddenLayers(self, h, diminput, dimoutput, nlayers, normalization=True, **kwargs):
+    def build_hidden_layers(self, h, diminput, dimoutput, nlayers, normalization=True, **kwargs):
         """
         Convenience function to build hidden layers
         """
@@ -417,12 +409,10 @@ class AbstractModel(BaseModel, object):
             window = 1
         for l in range(nlayers):
             with self.namespaces('layer'+str(l)):
-                h = self._linear(h,diminput,window*dimoutput,**kwargs)
+                h = self.linear(h,diminput,window*dimoutput,**kwargs)
                 y = h
                 if self.params['batchnorm'] and normalization:
                     h = self.batchnorm(h,window*dimoutput,output_axis=1,ndims=2,**kwargs)
-                elif self.params['layernorm'] and normalization:
-                    h = self._LayerNorm(W=W,b=bias,inp=inp)
                 h = self._applyNL(h)
                 diminput = dimoutput
         return h
@@ -453,7 +443,7 @@ class AbstractModel(BaseModel, object):
                 # some of these are CudaNDArray, so convert to NDarray
                 batch_outputs = NestD(batch_outputs).apply(np.asarray)
                 epoch_outputs.append(batch_outputs)
-                pb.update(i+1,self.progressBarUpdate(epoch_outputs))
+                pb.update(i+1,self.progress_bar_update(epoch_outputs))
             # if logfile exists, write output to it
             if self.logfile:
                 self.logfile.write(pb.get_current_output_str())
@@ -461,17 +451,17 @@ class AbstractModel(BaseModel, object):
         epoch_outputs.append({'duration (seconds)':duration})
         return epoch_outputs
 
-    def progressBarReportMap(self):
-        # see self.progressBarUpdate for use
+    def progress_bar_report_map(self):
+        # see self.progress_bar_update for use
         # use list to preserve order
         return [
             ('loss',np.mean,'%0.2f (epoch mean)'),
             ('accuracy',np.mean,'%0.2f (epoch mean)'),
         ]
 
-    def progressBarUpdate(self,epoch_outputs={}):
+    def progress_bar_update(self,epoch_outputs={}):
         # use list to preserve order
-        report_map = self.progressBarReportMap()
+        report_map = self.progress_bar_report_map()
         report = []
         for k,f,s in report_map:
             if k in epoch_outputs:

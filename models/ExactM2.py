@@ -2,30 +2,30 @@ from AbstractSingleStochasticLayerSemiVAE import *
         
 class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
 
-    def _build_inference_Y(self, X): 
+    def build_inference_Y(self, X): 
         """
         return h(x), logbeta(h(x))
         """
         if not self._evaluating:
-            X = self._dropout(X,self.params['input_dropout'])
+            X = self.dropout(X,self.params['input_dropout'])
             self._p(('Inference with dropout :%.4f')%(self.params['input_dropout']))
 
 
         with self.namespaces('h(x)'):
-            hx = self._buildHiddenLayers(X,diminput=self.params['dim_observations']
+            hx = self.build_hidden_layers(X,diminput=self.params['dim_observations']
                                           ,dimoutput=self.params['q_dim_hidden']
                                           ,nlayers=self.params['q_layers'])
 
         with self.namespaces('h_logbeta'):
-            h_logbeta = self._buildHiddenLayers(hx,diminput=self.params['q_dim_hidden']
+            h_logbeta = self.build_hidden_layers(hx,diminput=self.params['q_dim_hidden']
                                                   ,dimoutput=self.params['q_dim_hidden']
                                                   ,nlayers=self.params['alpha_inference_layers'])
 
         if not self._evaluating:
-            h_logbeta = self._dropout(h_logbeta,self.params['dropout_logbeta']) 
+            h_logbeta = self.dropout(h_logbeta,self.params['dropout_logbeta']) 
 
         with self.namespaces('logbeta'):
-            logbeta = self._linear(h_logbeta,diminput=self.params['q_dim_hidden']
+            logbeta = self.linear(h_logbeta,diminput=self.params['q_dim_hidden']
                                             ,dimoutput=self.params['nclasses'])
 
         #clip to avoid nans
@@ -34,7 +34,7 @@ class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
         self.tOutputs['logbeta'] = logbeta
         return hx, logbeta
 
-    def _buildVAE(self, X, eps, Y=None):
+    def build_vae(self, X, eps, Y=None):
         """
         Build VAE subgraph to do inference and emissions 
         (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
@@ -47,7 +47,7 @@ class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
             self._p(('Building graph for lower bound of logp(x,y)'))
 
         # build h(x) and logbeta
-        hx, logbeta = self._build_inference_Y(X)
+        hx, logbeta = self.build_inference_Y(X)
 
         #we don't actually use eps here, but do the following to include it in graph computation
         bs = eps.shape[0]
@@ -59,22 +59,22 @@ class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
             nllY = bs*theano.shared(np.log(self.params['nclasses']))
 
             # gaussian parameters (Z)
-            mu, logcov2 = self._build_inference_Z(Y,hx)
+            mu, logcov2 = self.build_inference_Z(Y,hx)
 
             # gaussian variates
             eps = self.srng.normal(mu.shape,0,1,dtype=config.floatX) 
-            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+            Z, KL_Z = self.variational_gaussian(mu,logcov2,eps)
 
             # adding noise during training usually helps performance
             if not self._evaluating:
                 Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
 
             # generative model
-            paramsX = self._build_generative(Y, Z)
+            paramsX = self.build_generative(Y, Z)
             if self.params['data_type']=='real':
-                nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
+                nllX = self.nll_gaussian(X,**paramsX).sum(axis=1)
             else:
-                nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
+                nllX = self.nll_bernoulli(X,**paramsX).sum(axis=1)
 
             KL = KL_Z.sum()
             NLL = nllX.sum() + nllY.sum()
@@ -97,22 +97,22 @@ class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
             X_repeat = T.tile(X.T,self.params['nclasses'],ndim=2).T
 
             # gaussian parameters (Z)
-            mu, logcov2 = self._build_inference_Z(y,hx_repeat)
+            mu, logcov2 = self.build_inference_Z(y,hx_repeat)
 
             # gaussian variates
             eps = self.srng.normal(mu.shape,0,1,dtype=config.floatX) 
-            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+            Z, KL_Z = self.variational_gaussian(mu,logcov2,eps)
 
             # adding noise during training usually helps performance
             if not self._evaluating:
                 Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
 
             # generative model
-            paramsX = self._build_generative(y, Z)
+            paramsX = self.build_generative(y, Z)
             if self.params['data_type']=='real':
-                nllX = self._nll_gaussian(X_repeat,**paramsX).sum(axis=1)
+                nllX = self.nll_gaussian(X_repeat,**paramsX).sum(axis=1)
             else:
-                nllX = self._nll_bernoulli(X_repeat,**paramsX).sum(axis=1)
+                nllX = self.nll_bernoulli(X_repeat,**paramsX).sum(axis=1)
 
             # evaluate kl and nll over all states of Y
             kl = 0
@@ -165,8 +165,8 @@ class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
 
         return self.tOutputs
 
-    def _build_classifier(self, XL, Y):
-        _, logbeta = self._build_inference_Y(XL)
+    def build_classifier(self, XL, Y):
+        _, logbeta = self.build_inference_Y(XL)
         probs = T.nnet.softmax(logbeta)
         #T.nnet.categorical_crossentropy returns a vector of length batch_size
         loss= T.nnet.categorical_crossentropy(probs,Y) 

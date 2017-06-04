@@ -2,7 +2,7 @@ from ExactM2 import *
 
 class GumbelSoftmaxM2SemiVAE(ExactM2SemiVAE):
 
-    def _sample_Y(self,logbeta):
+    def sample_y(self,logbeta):
         u = self.srng.uniform(logbeta.shape,low=1e-10,high=1.-1e-10,dtype=config.floatX)
         u = theano.gradient.disconnected_grad(u)
         g = -T.log(-T.log(u))
@@ -18,7 +18,7 @@ class GumbelSoftmaxM2SemiVAE(ExactM2SemiVAE):
         return y
 
 
-    def _buildVAE(self, X, eps, Y=None):
+    def build_vae(self, X, eps, Y=None):
         """
         Build VAE subgraph to do inference and emissions 
         (if Y==None, build upper bound of -logp(x), else build upper bound of -logp(x,y)
@@ -31,7 +31,7 @@ class GumbelSoftmaxM2SemiVAE(ExactM2SemiVAE):
             self._p(('Building graph for lower bound of logp(x,y)'))
 
         # build h(x) and logbeta
-        hx, logbeta = self._build_inference_Y(X)
+        hx, logbeta = self.build_inference_Y(X)
 
         # batchsize
         bs = eps.shape[0]
@@ -43,21 +43,21 @@ class GumbelSoftmaxM2SemiVAE(ExactM2SemiVAE):
             nllY = bs*theano.shared(np.log(self.params['nclasses']))
 
             # gaussian parameters (Z)
-            mu, logcov2 = self._build_inference_Z(Y,hx)
+            mu, logcov2 = self.build_inference_Z(Y,hx)
 
             # gaussian variates
-            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+            Z, KL_Z = self.variational_gaussian(mu,logcov2,eps)
 
             if not self._evaluating:
                 # adding noise during training usually helps performance
                 Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
 
             # generative model
-            paramsX = self._build_generative(Y, Z)
+            paramsX = self.build_generative(Y, Z)
             if self.params['data_type']=='real':
-                nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
+                nllX = self.nll_gaussian(X,**paramsX).sum(axis=1)
             else:
-                nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
+                nllX = self.nll_bernoulli(X,**paramsX).sum(axis=1)
 
             KL = KL_Z.sum()
             NLL = nllX.sum() + nllY.sum()
@@ -69,24 +69,24 @@ class GumbelSoftmaxM2SemiVAE(ExactM2SemiVAE):
             probs = T.nnet.softmax(logbeta)
             logprobs = T.log(probs)
             KL_Y = T.sum(probs*logprobs,axis=1)+np.log(self.params['nclasses'])
-            y = self._sample_Y(logbeta)
+            y = self.sample_y(logbeta)
 
             # gaussian parameters (Z)
-            mu, logcov2 = self._build_inference_Z(y,hx)
+            mu, logcov2 = self.build_inference_Z(y,hx)
 
             # gaussian variates
-            Z, KL_Z = self._variationalGaussian(mu,logcov2,eps)
+            Z, KL_Z = self.variational_gaussian(mu,logcov2,eps)
 
             if not self._evaluating:
                 # adding noise during training usually helps performance
                 Z = Z + self.srng.normal(Z.shape,0,0.05,dtype=config.floatX)
 
             # generative model
-            paramsX = self._build_generative(y, Z)
+            paramsX = self.build_generative(y, Z)
             if self.params['data_type']=='real':
-                nllX = self._nll_gaussian(X,**paramsX).sum(axis=1)
+                nllX = self.nll_gaussian(X,**paramsX).sum(axis=1)
             else:
-                nllX = self._nll_bernoulli(X,**paramsX).sum(axis=1)
+                nllX = self.nll_bernoulli(X,**paramsX).sum(axis=1)
 
             KL = KL_Y.sum() + KL_Z.sum()
             NLL = nllX.sum()

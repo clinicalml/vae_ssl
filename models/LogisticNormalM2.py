@@ -2,7 +2,7 @@ from GumbelSoftmaxM2 import *
 
 class LogisticNormalM2SemiVAE(GumbelSoftmaxM2SemiVAE):
 
-    def _sample_Y(self,mu):
+    def sample_y(self,mu):
         eps = theano.gradient.disconnected_grad(self.srng.normal(mu.shape,dtype=config.floatX))
         if self.params['model']=='LogisticNormalM2':
             y = T.nnet.softmax((eps+mu)*self.tHyperparams['sharpening'])

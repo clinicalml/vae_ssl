@@ -21,8 +21,8 @@ class AbstractSemiVAE(AbstractModel):
                 'epsL':np.random.randn(nL,self.params['dim_stochastic']).astype(config.floatX)
                }
 
-    def progressBarReportMap(self):
-        # see self.progressBarUpdate for use
+    def progress_bar_report_map(self):
+        # see self.progress_bar_update for use
         # use list to preserve order
         return [
             ('accuracy',lambda x:x.astype(float).mean(),'%0.2f (epoch mean)'),
@@ -38,7 +38,7 @@ class AbstractSemiVAE(AbstractModel):
             ('hyperparameters/annealing/KL_alpha',lambda x:np.mean(x[-1]),'%0.2e (last)'),
         ]
 
-    def _build_classifier(self, XL, Y):
+    def build_classifier(self, XL, Y):
         """
         calculate -log(q(Y|XL))
 
@@ -46,7 +46,7 @@ class AbstractSemiVAE(AbstractModel):
         """
         pass
 
-    def _buildSemiVAE(self,XU,XL,YL,epsU,epsL):
+    def build_semi_vae(self,XU,XL,YL,epsU,epsL):
         """
         U + L + classifier_weight*q(y|x)
         notes:
@@ -68,7 +68,7 @@ class AbstractSemiVAE(AbstractModel):
 
             # set tOutputs and tBatchnormStats namespaces to 'p(x)'
             with self.namespaces('p(x)',['tOutputs','tBatchnormStats']):
-                outputsU = self._buildVAE(XU,epsU,Y=None)
+                outputsU = self.build_vae(XU,epsU,Y=None)
                 boundU = outputsU['bound']
                 objfuncU = outputsU['objfunc']
 
@@ -76,13 +76,13 @@ class AbstractSemiVAE(AbstractModel):
 
             # set tOutputs and tBatchnormStats namespaces to 'p(x,y)'
             with self.namespaces('p(x,y)',['tOutputs','tBatchnormStats']):
-                outputsL = self._buildVAE(XL,epsL,Y=YL_onehot)
+                outputsL = self.build_vae(XL,epsL,Y=YL_onehot)
                 boundL = outputsL['bound']
                 objfuncL = outputsL['objfunc']
 
             # set tOutputs and tBatchnormStats namespaces to 'q(y|x)'
             with self.namespaces('q(y|x)',['tOutputs','tBatchnormStats']):
-                _, crossentropyloss, accuracy = self._build_classifier(XL,YL)
+                _, crossentropyloss, accuracy = self.build_classifier(XL,YL)
 
         # calculate bound, loss, and theano-specific objective function (w/ gradient hacks)
         boundU = boundU.sum()
@@ -109,23 +109,23 @@ class AbstractSemiVAE(AbstractModel):
                             })
         return self.tOutputs
 
-    def _setupHyperparameters(self):
+    def build_hyperparameters(self):
         # learning rate
-        lr = self._addWeights('lr',np.asarray(self.params['lr']))
+        lr = self.add_weights('lr',np.asarray(self.params['lr']))
         # unlike all other updates, lr_update will be updated in a different theano function
         self.lr_update = [(lr,T.switch(lr/1.0005<1e-4,lr,lr/1.0005))]
 
         # iteration
-        t = self._addWeights('update_ctr',np.asarray(1.))
-        self._addUpdate(t,t+1)
+        t = self.add_weights('update_ctr',np.asarray(1.))
+        self.add_update(t,t+1)
 
         with self.namespaces('annealing'):
             # annealing parameters
-            aKL_Z = self._addWeights('KL_Z',np.asarray(0.))
-            aKL_alpha = self._addWeights('KL_alpha',np.asarray(0.))
-            aCW = self._addWeights('classifier',np.asarray(0.))
-            aBound = self._addWeights('bound',np.asarray(0.))
-            aSH = self._addWeights('sharpening',np.asarray(0.))
+            aKL_Z = self.add_weights('KL_Z',np.asarray(0.))
+            aKL_alpha = self.add_weights('KL_alpha',np.asarray(0.))
+            aCW = self.add_weights('classifier',np.asarray(0.))
+            aBound = self.add_weights('bound',np.asarray(0.))
+            aSH = self.add_weights('sharpening',np.asarray(0.))
 
             # divisors for updates
             aKL_Z_div = float(self.params['annealKL_Z']) #50000.
@@ -135,15 +135,15 @@ class AbstractSemiVAE(AbstractModel):
             aSH_div = float(self.params['annealSharpening'])
 
             # updates
-            self._addUpdate(aKL_Z,T.switch(t/aKL_Z_div>1,1.,0.01+t/aKL_Z_div))
-            self._addUpdate(aKL_alpha,T.switch(t/aKL_Z_div>1,1.,0.01+t/aKL_Z_div))
-            self._addUpdate(aCW,T.switch(t/aCW_div>1,1.,0.01+t/aCW_div))
-            self._addUpdate(aBound,T.switch(t/aBound_div>1,1.,0.01+t/aBound_div))
-            self._addUpdate(aSH,T.switch(t/aSH_div>1,1.,0.01+t/aSH_div))
+            self.add_update(aKL_Z,T.switch(t/aKL_Z_div>1,1.,0.01+t/aKL_Z_div))
+            self.add_update(aKL_alpha,T.switch(t/aKL_Z_div>1,1.,0.01+t/aKL_Z_div))
+            self.add_update(aCW,T.switch(t/aCW_div>1,1.,0.01+t/aCW_div))
+            self.add_update(aBound,T.switch(t/aBound_div>1,1.,0.01+t/aBound_div))
+            self.add_update(aSH,T.switch(t/aSH_div>1,1.,0.01+t/aSH_div))
 
         # sharpening
-        sharpening = self._addWeights('sharpening',np.asarray(self.params['sharpening']))
-        self._addUpdate(sharpening,self.params['sharpening']*0.5*(1.+aSH))
+        sharpening = self.add_weights('sharpening',np.asarray(self.params['sharpening']))
+        self.add_update(sharpening,self.params['sharpening']*0.5*(1.+aSH))
 
         # save all hyperparameters to tOutputs for access later
         self.tOutputs.update(self.tWeights)
@@ -163,7 +163,7 @@ class AbstractSemiVAE(AbstractModel):
         YL = T.ivector('YL')
         epsU = T.matrix('epsU', dtype=config.floatX)
         epsL = T.matrix('epsL', dtype=config.floatX)
-        self._fakeData(XU,XL,YL,epsU,epsL)
+        self.fake_data(XU,XL,YL,epsU,epsL)
 
 
         # We will have a separate sub-namespace in tWeights for storing batchnorm statistics.
@@ -185,13 +185,13 @@ class AbstractSemiVAE(AbstractModel):
             # set tWeights and tOutputs to hyperparameters 
             # (these are adjusted during training, thus they go in the 'train' namespace)
             with self.namespaces('hyperparameters',['tWeights','tOutputs']):
-                self._setupHyperparameters()
+                self.build_hyperparameters()
                 self.tHyperparams = self.tOutputs
 
             # set the namespace for tWeights to 'weights'
             # (this is the same namespace for training, evaluation, and sampling)
             with self.namespace('weights','tWeights'):
-                train_outputs = self._buildSemiVAE(XU,XL,YL,epsU,epsL)
+                train_outputs = self.build_semi_vae(XU,XL,YL,epsU,epsL)
             
         """
         Build evaluation graph
@@ -205,21 +205,21 @@ class AbstractSemiVAE(AbstractModel):
             with self.namespace('weights','tWeights'):
                 # set the entire class in evaluate mode 
                 # i.e. this sets self._evaluating=True (instead of being False)
-                with self._evaluate():
-                    self._buildSemiVAE(XU,XL,YL,epsU,epsL)
+                with self.evaluate():
+                    self.build_semi_vae(XU,XL,YL,epsU,epsL)
         
         """
         Build sampling graph
         """
         with self.namespace('samples','tOutputs'):
             with self.namespace('weights','tWeights'):
-                with self._evaluate():
+                with self.evaluate():
                     Z = T.matrix('Z',dtype=config.floatX)
                     alpha = T.matrix('alpha',dtype=config.floatX)
                     with self.namespaces('p(x)',['tOutputs','tBatchnormStats']):
-                        self.tOutputs['probs'] = self._build_generative(alpha,Z)
+                        self.tOutputs['probs'] = self.build_generative(alpha,Z)
                     with self.namespaces('p(x,y)',['tOutputs','tBatchnormStats']):
-                        self.tOutputs['probs'] = self._build_generative(alpha,Z)
+                        self.tOutputs['probs'] = self.build_generative(alpha,Z)
                 
 
         #Training objective
@@ -230,7 +230,7 @@ class AbstractSemiVAE(AbstractModel):
         # * tWeights is a NestD object, a nested dictionary with some helpful functions
         # * The .leaves() function returns all the leaves of a NestD object
         with self.namespace('weights','tWeights'):
-            optimization_outputs = self._setupOptimizer(trainobjective,self.tWeights,
+            optimization_outputs = self.setup_optimizer(trainobjective,self.tWeights,
                                                         lr=self.tHyperparams['lr'],
                                                         optim_method=self.params['optimizer'], 
                                                         reg_type =self.params['reg_type'], 
@@ -252,7 +252,7 @@ class AbstractSemiVAE(AbstractModel):
                                   'gnorm':norm_list[1],
                                   'objective':trainobjective})
 
-        #self.updates is container for all updates (e.g. see self._addUpdates in AbstraceSemiVAE)
+        #self.updates is container for all updates (e.g. see self.add_updates in AbstraceSemiVAE)
         self.updates += optimizer_up
         
         #Build theano functions
@@ -295,7 +295,7 @@ class AbstractSemiVAE(AbstractModel):
         alpha = np.repeat((np.arange(K).reshape(1,-1) == np.arange(K).reshape(-1,1)).astype('int'),axis=0,repeats=nsamples).astype(config.floatX)
         return {'U':self.sample_px(z,alpha),'L':self.sample_pxy(z,alpha)}
 
-    def _fakeData(self,XU,XL,Y,epsU,epsL):
+    def fake_data(self,XU,XL,Y,epsU,epsL):
         """
                                 Compile all the fake data 
         """

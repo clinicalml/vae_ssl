@@ -20,7 +20,6 @@ parser.add_argument('-nl','--nonlinearity', action='store',default = 'maxout', h
 parser.add_argument('-mstride','--maxout_stride', action='store',default = 4, help='Stride for maxout',type=int)
 parser.add_argument('-lky','--leaky_param', action='store',default =0., help='Leaky ReLU parameter',type=float)
 parser.add_argument('-bn','--batchnorm', action='store',default = False, help='Batch Normalization',type=bool)
-parser.add_argument('-ln','--layernorm', action='store',default = False, help='Layer Normalization',type=bool)
 parser.add_argument('-pn','--p_normlayers', action='store',default = False, help='Allow normalization layers in Generative Model', type=bool)
 
 #Variational Model Specification

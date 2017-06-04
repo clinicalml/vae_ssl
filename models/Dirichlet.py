@@ -43,14 +43,14 @@ class DirichletSemiVAE(LogGammaSemiVAE):
         qlogp = self._DirichletNegCrossEntropy(beta_q,beta_p)
         return qlogq-qlogp
 
-    def _logpdf_LogGamma(self, U, beta):
+    def logpdf_loggamma(self, U, beta):
         """
                          log probability density function for Dirichlet
         """
         X = T.nnet.softmax(U)
         return -self._LogBetaFunction(beta,axis=1,keepdims=True) + T.sum((beta-1.)*T.log(X),axis=1,keepdims=True)
 
-    def _variationalLoggamma(self,beta_q,betaprior):
+    def variational_loggamma(self,beta_q,betaprior):
         loggamma_variates = theano.gradient.disconnected_grad(self.rng_loggamma(beta_q))
         K = self.params['nclasses']
         beta_p = betaprior*np.ones((1,K))
