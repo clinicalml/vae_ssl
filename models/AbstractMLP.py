@@ -1,24 +1,20 @@
 from AbstractModel import * 
 
-class AbstractSemiVAE(AbstractModel):
+class AbstractMLP(AbstractModel):
 
     def __init__(self,params,*args,**kwargs):
         params['data_type'] = 'binary'
-        super(AbstractSemiVAE,self).__init__(params,*args,**kwargs)
+        super(AbstractMLP,self).__init__(params,*args,**kwargs)
 
     def sample_dataset(self, dataset):
         p = np.random.uniform(low=0,high=1,size=dataset.shape)
         return (dataset >= p).astype(config.floatX)
 
     def preprocess_minibatch(self,minibatch):
-        nU = len(minibatch['U']['X'])
         nL = len(minibatch['L']['X'])
         return {
-                'XU':self.sample_dataset(minibatch['U']['X']),
-                'XL':self.sample_dataset(minibatch['L']['X']),
-                'YL':minibatch['L']['Y'].astype('int32'),
-                'epsU':np.random.randn(nU,self.params['dim_stochastic']).astype(config.floatX),
-                'epsL':np.random.randn(nL,self.params['dim_stochastic']).astype(config.floatX)
+                'X':self.sample_dataset(minibatch['L']['X']),
+                'Y':minibatch['L']['Y'].astype('int32'),
                }
 
     def progress_bar_report_map(self):
@@ -27,33 +23,21 @@ class AbstractSemiVAE(AbstractModel):
         return [
             ('accuracy',lambda x:x.astype(float).mean(),'%0.2f (epoch mean)'),
             ('loss',np.mean,'%0.2f (epoch mean)'),
-            #('objective',np.mean,'%0.2f (epoch mean)'),
             ('classifier',np.mean,'%0.2f (epoch mean)'),
-            ('bound',np.mean,'%0.2f (epoch mean)'),
-            ('boundU',np.mean,'%0.2f (epoch mean)'),
-            ('boundL',np.mean,'%0.2f (epoch mean)'),
             ('hyperparameters/lr',lambda x:np.mean(x[-1]),'%0.2e (last)'),
-            ('hyperparameters/annealing/classifier',lambda x:np.mean(x[-1]),'%0.2e (last)'),
-            ('hyperparameters/annealing/KL_Z',lambda x:np.mean(x[-1]),'%0.2e (last)'),
-            ('hyperparameters/annealing/KL_alpha',lambda x:np.mean(x[-1]),'%0.2e (last)'),
         ]
 
-    def build_classifier(self, XL, Y):
+    def build_classifier(self, X, Y):
         """
-        calculate -log(q(Y|XL))
+        calculate -log(q(Y|X))
 
         return probs, loss, accuracy
         """
         pass
 
-    def build_semi_vae(self,XU,XL,YL,epsU,epsL):
+    def build_mlp(self,X,Y):
         """
-        U + L + classifier_weight*q(y|x)
-        notes:
-        * when training, components of the objective function are annealed
-        * use separate batchnorm running stats for each of the subgraphs p(x), p(x,y), q(y|x);
-          though, this is not the correct way to use batchnorm, it is convenient for modeling
-          semi supervised VAEs
+        build a simple MLP similar to that in AbstractSemiVAE
         """
 
         # from now on, under this with statement, we will almost always be working
@@ -63,47 +47,22 @@ class AbstractSemiVAE(AbstractModel):
         # tWeights: container for all theano shared variables
         # tOutputs: container for variables that will be outputs of our theano functions
         # tBatchnormStats: container for batchnorm running statistics
-        # note: we have separate batchnorm running stats for each of p(x), p(x,y), q(y|x)
         with self.set_attr('default_namespaces',['tWeights','tOutputs','tBatchnormStats']):
-
-            # set tOutputs and tBatchnormStats namespaces to 'p(x)'
-            with self.namespaces('p(x)',['tOutputs','tBatchnormStats']):
-                outputsU = self.build_vae(XU,epsU,Y=None)
-                boundU = outputsU['bound']
-                objfuncU = outputsU['objfunc']
-
-            YL_onehot = T.extra_ops.to_one_hot(YL,self.params['nclasses'],dtype=config.floatX)
-
-            # set tOutputs and tBatchnormStats namespaces to 'p(x,y)'
-            with self.namespaces('p(x,y)',['tOutputs','tBatchnormStats']):
-                outputsL = self.build_vae(XL,epsL,Y=YL_onehot)
-                boundL = outputsL['bound']
-                objfuncL = outputsL['objfunc']
 
             # set tOutputs and tBatchnormStats namespaces to 'q(y|x)'
             with self.namespaces('q(y|x)',['tOutputs','tBatchnormStats']):
-                _, crossentropyloss, accuracy = self.build_classifier(XL,YL)
+                _, crossentropyloss, accuracy = self.build_classifier(X,Y)
 
         # calculate bound, loss, and theano-specific objective function (w/ gradient hacks)
-        boundU = boundU.sum()
-        boundL = boundL.sum()
-        bound = boundU + boundL 
+        # keep classifier weight here for comparison with SemiVAE's 
         classifier = self.params['classifier_weight']*crossentropyloss.sum()
-        loss = bound + classifier 
-        if self._evaluating:
-            objective = loss 
-        else:
-            anneal = self.tHyperparams['annealing']
-            # note that objfunc* contains the gradient hack, whereas bound* does not
-            objective = anneal['bound']*(objfuncU.sum() + self.params['boundXY_weight']*objfuncL.sum()) + anneal['classifier']*self.params['classifier_weight']*crossentropyloss.sum() 
+        objective = classifier
+        loss = classifier
 
         # for reporting purposes, normalize some of the outputs
         self.tOutputs.update({
-                                'boundU':boundU/XU.shape[0],
-                                'boundL':boundL/XU.shape[0],
-                                'bound':bound/XU.shape[0],
-                                'classifier':classifier/XL.shape[0],
-                                'loss':loss/XU.shape[0],
+                                'classifier':classifier/X.shape[0],
+                                'loss':loss/X.shape[0],
                                 'objective':objective,
                                 'accuracy':accuracy,
                             })
@@ -119,32 +78,6 @@ class AbstractSemiVAE(AbstractModel):
         t = self.add_weights('update_ctr',np.asarray(1.))
         self.add_update(t,t+1)
 
-        with self.namespaces('annealing'):
-            # annealing parameters
-            aKL_Z = self.add_weights('KL_Z',np.asarray(0.))
-            aKL_alpha = self.add_weights('KL_alpha',np.asarray(0.))
-            aCW = self.add_weights('classifier',np.asarray(0.))
-            aBound = self.add_weights('bound',np.asarray(0.))
-            aSH = self.add_weights('sharpening',np.asarray(0.))
-
-            # divisors for updates
-            aKL_Z_div = float(self.params['annealKL_Z']) #50000.
-            aKL_alpha_div = float(self.params['annealKL_alpha']) #50000.
-            aCW_div = float(self.params['annealCW']) #50000.
-            aBound_div = float(self.params['annealBound']) #50000.
-            aSH_div = float(self.params['annealSharpening'])
-
-            # updates
-            self.add_update(aKL_Z,T.switch(t/aKL_Z_div>1,1.,0.01+t/aKL_Z_div))
-            self.add_update(aKL_alpha,T.switch(t/aKL_Z_div>1,1.,0.01+t/aKL_Z_div))
-            self.add_update(aCW,T.switch(t/aCW_div>1,1.,0.01+t/aCW_div))
-            self.add_update(aBound,T.switch(t/aBound_div>1,1.,0.01+t/aBound_div))
-            self.add_update(aSH,T.switch(t/aSH_div>1,1.,0.01+t/aSH_div))
-
-        # sharpening
-        sharpening = self.add_weights('sharpening',np.asarray(self.params['sharpening']))
-        self.add_update(sharpening,self.params['sharpening']*0.5*(1.+aSH))
-
         # save all hyperparameters to tOutputs for access later
         self.tOutputs.update(self.tWeights)
     
@@ -158,12 +91,9 @@ class AbstractSemiVAE(AbstractModel):
         """
 
         #Inputs to graph
-        XU = T.matrix('XU',   dtype=config.floatX)
-        XL = T.matrix('XL',   dtype=config.floatX)
-        YL = T.ivector('YL')
-        epsU = T.matrix('epsU', dtype=config.floatX)
-        epsL = T.matrix('epsL', dtype=config.floatX)
-        self.fake_data(XU,XL,YL,epsU,epsL)
+        X = T.matrix('X',   dtype=config.floatX)
+        Y = T.ivector('Y')
+        self.fake_data(X,Y)
 
 
         # We will have a separate sub-namespace in tWeights for storing batchnorm statistics.
@@ -191,7 +121,7 @@ class AbstractSemiVAE(AbstractModel):
             # set the namespace for tWeights to 'weights'
             # (this is the same namespace for training, evaluation, and sampling)
             with self.namespace('weights','tWeights'):
-                self.build_semi_vae(XU,XL,YL,epsU,epsL)
+                self.build_mlp(X,Y)
             
         """
         Build evaluation graph
@@ -206,22 +136,8 @@ class AbstractSemiVAE(AbstractModel):
                 # set the entire class in evaluate mode 
                 # i.e. this sets self._evaluating=True (instead of being False)
                 with self.evaluate():
-                    self.build_semi_vae(XU,XL,YL,epsU,epsL)
+                    self.build_mlp(X,Y)
         
-        """
-        Build sampling graph
-        """
-        with self.namespace('samples','tOutputs'):
-            with self.namespace('weights','tWeights'):
-                with self.evaluate():
-                    Z = T.matrix('Z',dtype=config.floatX)
-                    alpha = T.matrix('alpha',dtype=config.floatX)
-                    with self.namespaces('p(x)',['tOutputs','tBatchnormStats']):
-                        self.tOutputs['probs'] = self.build_generative(alpha,Z)
-                    with self.namespaces('p(x,y)',['tOutputs','tBatchnormStats']):
-                        self.tOutputs['probs'] = self.build_generative(alpha,Z)
-                
-
         #Training objective
         trainobjective = self.tOutputs['train']['objective'] 
 
@@ -256,7 +172,7 @@ class AbstractSemiVAE(AbstractModel):
         self.updates += optimizer_up
         
         #Build theano functions
-        fn_inputs = [XU,XL,YL,epsU,epsL]
+        fn_inputs = [X,Y]
 
         with self.namespace('train','tOutputs'):
             # .flatten(join='/') converts hierarchical NestD to NestD of depth 1
@@ -275,44 +191,24 @@ class AbstractSemiVAE(AbstractModel):
                                        ,name='Update LR'
                                        ,updates=self.lr_update)
 
-        with self.namespace('samples','tOutputs'):
-            with self.namespace('p(x)','tOutputs'):
-                self.sample_px = theano.function([Z,alpha],self.tOutputs['probs']
-                                                ,name='sample p(x)')
-            with self.namespace('p(x,y)','tOutputs'):
-                self.sample_pxy = theano.function([Z,alpha],self.tOutputs['probs']
-                                                  ,name='sample p(x,y)')
-
     def post_train_hook(self,**kwargs):
         self.decay_lr()
 
     def post_valid_hook(self,**kwargs):
-        if not hasattr(self,'_log_samples'):
-            self._log_samples = NestDArrays()
-        #generate samples
-        self._log_samples.append(self.sample_model(nsamples=100))
+        pass
+
+    def post_test_hook(self,**kwargs):
+        pass
 
     def post_save_hook(self,**kwargs):
-        saveHDF5(os.path.join(kwargs['savedir'],'samples.h5'), self._log_samples)
+        pass
 
-    def sample_model(self,nsamples=10):
-        """
-                                Sample from Generative Model
-        """
-        K = self.params['nclasses']
-        z = np.random.randn(K*nsamples,self.params['dim_stochastic']).astype(config.floatX)
-        alpha = np.repeat((np.arange(K).reshape(1,-1) == np.arange(K).reshape(-1,1)).astype('int'),axis=0,repeats=nsamples).astype(config.floatX)
-        return {'p(x)':self.sample_px(z,alpha),'p(x,y)':self.sample_pxy(z,alpha)}
-
-    def fake_data(self,XU,XL,Y,epsU,epsL):
+    def fake_data(self,X,Y):
         """
                                 Compile all the fake data 
         """
-        XU.tag.test_value = np.random.randint(0,2,(2, self.params['dim_observations'])).astype(config.floatX)
-        XL.tag.test_value = np.random.randint(0,2,(20, self.params['dim_observations'])).astype(config.floatX)
+        X.tag.test_value = np.random.randint(0,2,(20, self.params['dim_observations'])).astype(config.floatX)
         Y.tag.test_value = np.mod(np.arange(20),10).astype('int32')
-        epsU.tag.test_value = np.random.randn(2, self.params['dim_stochastic']).astype(config.floatX)
-        epsL.tag.test_value = np.random.randn(20, self.params['dim_stochastic']).astype(config.floatX)
 
 
 

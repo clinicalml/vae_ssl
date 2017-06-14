@@ -65,13 +65,16 @@ class NestD(dict,object):
                     key_filter = lambda a: a in idx
                 else:
                     assert False, 'unhandled index type %s' % str(type(idx))
-                d2 = self.__recreate__()
+                d2 = d1.__recreate__()
                 if idx_descendants is not None and len(idx_descendants) > 0:
-                    for k in filter(key_filter,self.keys()):
-                        d2[k] = super(NestD,d1).__getitem__(k)[idx_descendants]
+                    for k in filter(key_filter,d1.keys()):
+                        v = super(NestD,d1).__getitem__(k)
+                        if isinstance(v,NestD):
+                            d2[k] = v[idx_descendants]
                 else:
-                    for k in filter(key_filter,self.keys()):
+                    for k in filter(key_filter,d1.keys()):
                         d2[k] = super(NestD,d1).__getitem__(k)
+                d2 = d2.prune()
             return d2
         if isinstance(x,tuple):
             return _get(self,x[0],x[1:])
@@ -227,9 +230,13 @@ class NestD(dict,object):
         """
         def _prune(d1):
             d2 = d1.__recreate__()
-            for k in d1:
-                if len(d1[k])>0:
-                    d2[k] = d1[k]
+            if len(d1)>0:
+                for k in d1:
+                    if isinstance(d1[k],NestD):
+                        if len(d1[k])>0:
+                            d2[k] = d1[k]
+                    elif d1[k] is not None:
+                        d2[k] = d1[k]
             return d2
         return self.cascade(_prune)
                     

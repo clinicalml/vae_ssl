@@ -471,7 +471,16 @@ class AbstractModel(BaseModel, object):
         else:
             return None
 
-    def post_train_hook(self):
+    def post_train_hook(self,**kwargs):
+        pass
+
+    def post_valid_hook(self,**kwargs):
+        pass
+
+    def post_test_hook(self,**kwargs):
+        pass
+
+    def post_save_hook(self,**kwargs):
         pass
 
     def learn(self, dataset, epoch_start=0, epoch_end=1000, batchsize=200,
@@ -483,37 +492,35 @@ class AbstractModel(BaseModel, object):
 
         log = NestDArrays({'train':{},'valid':{},'test':{}})    
         log_verbose = NestDArrays({'train':{},'valid':{},'test':{}}) 
-        log_samples = NestDArrays({'samples':{}})
 
         for epoch in range(epoch_start,epoch_end+1):
             #train
             print '\nTraining: epoch %s of %s' % (epoch,epoch_end)
             epoch_log = self.run_epoch(traindata,self.train,maxiters,collect_garbage)
-            self.post_train_hook()
+            self.post_train_hook(**{k:v for k,v in locals().iteritems() if k!='self'})
             log['train'].append(epoch_log.apply(np.mean))
             log['train'].append({'epoch':epoch})
             # log_verbose stores the last 100 training samples from each epoch
-            log_verbose['train'].append(epoch_log.apply(lambda x: x[:100]))
+            log_verbose['train'].append(epoch_log.apply(lambda x: x[-100:]))
 
             if evalfreq is not None and epoch % evalfreq==0:
                 #evaluate on validation set
                 print '\nValidating: epoch %s of %s' % (epoch,epoch_end)
                 epoch_log = self.run_epoch(validdata,self.evaluate,maxiters,collect_garbage)
+                self.post_valid_hook(**{k:v for k,v in locals().iteritems() if k!='self'})
                 log['valid'].append(epoch_log.apply(np.mean))
                 log['valid'].append({'epoch':epoch})
-                log_verbose['valid'].append(epoch_log.apply(lambda x: x[:100]))
-
-                #generate samples
-                log_samples.append(self.sample_model(nsamples=100))
+                log_verbose['valid'].append(epoch_log.apply(lambda x: x[-100:]))
 
             if hasattr(dataset,'test') and epoch == epoch_end:
                 #evaluate on test set
                 print '\nTesting: epoch %s of %s' % (epoch,epoch_end)
                 testdata = DataLoader(dataset.test,batchsize,shuffle=False)
                 epoch_log = self.run_epoch(testdata,self.evaluate,maxiters,collect_garbage)
+                self.post_test_hook(**{k:v for k,v in locals().iteritems() if k!='self'})
                 log['test'].append(epoch_log.apply(np.mean))
                 log['test'].append({'epoch':epoch})
-                log_verbose['test'].append(epoch_log.apply(lambda x: x[:100]))
+                log_verbose['test'].append(epoch_log.apply(lambda x: x[-100:]))
             
             if savefreq is not None and (epoch % savefreq==0 or epoch == epoch_end):
                 self._p(('Saving at epoch %d'%epoch))
@@ -526,9 +533,9 @@ class AbstractModel(BaseModel, object):
                     self._saveModel(savedir)
                 saveHDF5(os.path.join(savedir,'output.h5'), log)
                 saveHDF5(os.path.join(savedir,'output_verbose.h5'), log_verbose)
-                saveHDF5(os.path.join(savedir,'samples.h5'), log_samples)
+                self.post_save_hook(**{k:v for k,v in locals().iteritems() if k!='self'})
 
-        return {'output':log,'output_verbose':log_verbose,'samples':log_samples}
+        return {'output':log,'output_verbose':log_verbose}
 
     def _saveModel(self,savedir):
         """

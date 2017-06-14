@@ -3,6 +3,16 @@ import os
 import sys
 from contextlib import contextmanager
 import datetime
+import json
+import pandas as pd
+
+def extract_configs(rootdir,filename='config.json'):
+    files = {}
+    for dirpath, dirnames, filenames in os.walk(rootdir):
+        if filename in filenames:
+            with open(os.path.join(dirpath,filename),'r') as f:
+                files[dirpath] = json.loads(f.read())
+    return pd.DataFrame(files)
 
 def get_new_dirpath_as_timestring(parentdir,suffix=None,leading_zeros_counter=2):
     assert isinstance(leading_zeros_counter,int), 'leading_zeros_counter must be an int'

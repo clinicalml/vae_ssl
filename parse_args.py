@@ -32,6 +32,7 @@ parser.add_argument('-model','--model',action='store',default='LogGamma',help='c
     'STGumbelSoftmaxM2',
     'LogisticNormalM2',
     'STLogisticNormalM2',
+    'MLP',
 ])
 parser.add_argument('-lpo','--learn_posterior',action='store',default=False,help='learn posterior (model-specific implementations)',type=bool)
 parser.add_argument('-pv','--posterior_val',action='store',default=-6.,help='scalar value used in adjusting the posterior of the model conditioned on the class label',type=float)

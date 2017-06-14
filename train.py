@@ -71,6 +71,9 @@ with logger.send_stderr_to_logger():
             elif params['model'] in ['LogisticNormalM2','STLogisticNormalM2']:
                 from models.LogisticNormalM2 import LogisticNormalM2SemiVAE 
                 SSL_VAE_CLASS = LogisticNormalM2SemiVAE
+            elif params['model'] == 'MLP':
+                from models.MLP import MLP
+                SSL_VAE_CLASS = MLP
             else:
                 raise NameError('unhandled model type: %s' % params['model'])
 
