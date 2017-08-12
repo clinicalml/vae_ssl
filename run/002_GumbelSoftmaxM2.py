@@ -1,6 +1,6 @@
 import os
 
-exptdir = 'GumbelSoftmaxM2'
+exptdir = 'GumbelSoftmaxM2_sh3'
 script = 'train.py'
 rootdir = 'output/002_10seeds/'
 session = exptdir
@@ -33,7 +33,7 @@ run_flags=[#'--savedir=%s'%savedir,
 seeds = range(1,11)
 
 flags = {
-    'cw128':'-cw 128'
+    'cw128_sh3':'-cw 128 --sharpening=3'
 }
 
 vary_flags = {}
