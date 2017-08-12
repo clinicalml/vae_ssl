@@ -7,7 +7,7 @@ This repo implements a series of semi-supervised variational autoencoding models
 
 ### Introduction to Semi Supervised Learning with VAEs
 The goal of semi-supervised learning is to improve the performance of a supervised learning classifier using unlabeled data.  Semi-supervised learning is very natural with variational autoencoders.  We formulate the problem as maximizing the likelihood of observing both labeled and unlabeled data:
-$$ \max_{\theta_U,\theta_L} \sum_{x \in U} $$
+$ \max_{\theta_U,\theta_L} \sum_{x \in U} $$
 
 ### Model Descriptions
 
@@ -17,7 +17,7 @@ $$ \max_{\theta_U,\theta_L} \sum_{x \in U} $$
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/multi_seed_accuracy_validation.png)
 
 ### Samples 
-Samples from both $$p(x)$$ and $$p(x,y)$$ of the GumbelSoftmaxM2 model at the end of training:
+Samples from both $p(x)$ and $p(x,y)$ of the GumbelSoftmaxM2 model at the end of training:
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/samples_GumbelSoftmaxM2.png)
 
 ### KL Plots
