@@ -7,12 +7,9 @@ This repo implements a series of semi-supervised variational autoencoding models
 
 ### Introduction to Semi Supervised Learning with VAEs
 The goal of semi-supervised learning is to improve the performance of a supervised learning classifier using unlabeled data.  Semi-supervised learning is very natural with variational autoencoders.  We formulate the problem as follows:
-$ latex $
+$$ latex $$
 
 ### Model Descriptions
-* M2
-* M2 with Concrete Distribution models
-* Conjugate Relaxation
 
 ### Training Details
 
