@@ -19,7 +19,7 @@ $ latex $
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/multi_seed_accuracy_validation.png)
 
 ### Samples 
-Samples from GumbelSoftmaxM2 model at the end of training:
+Samples from both $$p(x)$$ and $$p(x,y)$$ of the GumbelSoftmaxM2 model at the end of training:
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/samples_GumbelSoftmaxM2.png)
 
 ### KL Plots
