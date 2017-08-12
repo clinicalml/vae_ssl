@@ -7,8 +7,8 @@ This repo implements a series of semi-supervised variational autoencoding models
 
 ### Introduction to Semi Supervised Learning with VAEs
 The goal of semi-supervised learning is to improve the performance of a supervised learning classifier using unlabeled data.  Semi-supervised learning is very natural with variational autoencoders.  We formulate the problem as maximizing the likelihood of observing both labeled and unlabeled data:
+
 <a href="https://www.codecogs.com/eqnedit.php?latex=\max_{\theta_U,\theta_L}&space;\sum_{x&space;\in&space;U}&space;p(x;\theta_U)&space;&plus;&space;\sum_{x,y&space;\in&space;L}&space;p(x,y;\theta_L)" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\max_{\theta_U,\theta_L}&space;\sum_{x&space;\in&space;U}&space;p(x;\theta_U)&space;&plus;&space;\sum_{x,y&space;\in&space;L}&space;p(x,y;\theta_L)" title="\max_{\theta_U,\theta_L} \sum_{x \in U} p(x;\theta_U) + \sum_{x,y \in L} p(x,y;\theta_L)" /></a>
-$ \max_{\theta_U,\theta_L} \sum_{x \in U} $$
 
 ### Model Descriptions
 
