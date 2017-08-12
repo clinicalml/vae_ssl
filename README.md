@@ -6,8 +6,8 @@ This repo implements a series of semi-supervised variational autoencoding models
 [2] Jang, Eric, Shixiang Gu, and Ben Poole. "Categorical reparameterization with gumbel-softmax." arXiv preprint arXiv:1611.01144 (2016). 
 
 ### Introduction to Semi Supervised Learning with VAEs
-The goal of semi-supervised learning is to improve the performance of a supervised learning classifier using unlabeled data.  Semi-supervised learning is very natural with variational autoencoders.  We formulate the problem as follows:
-$$ latex $$
+The goal of semi-supervised learning is to improve the performance of a supervised learning classifier using unlabeled data.  Semi-supervised learning is very natural with variational autoencoders.  We formulate the problem as maximizing the likelihood of observing both labeled and unlabeled data:
+$$ \max_{\theta_U,\theta_L} \sum_{x \in U} $$
 
 ### Model Descriptions
 
