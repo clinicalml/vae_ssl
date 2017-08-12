@@ -2,6 +2,7 @@
 This repo implements a series of semi-supervised variational autoencoding models in [Theano](http://deeplearning.net/software/theano/) using [theanomodels](https://github.com/clinicalml/theanomodels) as a framework.
 
 [1] Kingma, Diederik P., et al. "Semi-supervised learning with deep generative models." Advances in Neural Information Processing Systems. 2014.
+
 [2] Jang, Eric, Shixiang Gu, and Ben Poole. "Categorical reparameterization with gumbel-softmax." arXiv preprint arXiv:1611.01144 (2016). 
 
 ### Introduction to Semi Supervised Learning with VAEs
