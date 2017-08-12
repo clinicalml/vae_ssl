@@ -1,6 +1,6 @@
 import collections
 
-class NestD(dict,object):
+class NestD(dict, object):
 
     _valid_key_types = (str,unicode,int,float,bool)
 
@@ -27,67 +27,73 @@ class NestD(dict,object):
         >> type(y[(1,1)])
         __main__.NestD
         """
-        super(NestD,self).__init__(data,**kwargs)
+        super(NestD, self).__init__(data, **kwargs)
         if convert_children:
+
             def _apply_func(d):
-                if isinstance(d,dict) and not isinstance(d,NestD):
+                if isinstance(d, dict) and not isinstance(d, NestD):
                     return self.__recreate__(d).apply(_apply_func)
                 else:
                     return d
+
             temp = self.apply(_apply_func)
             for k in temp.keys():
                 self[k] = temp[k]
 
-    def __recreate__(self,*args,**kwargs):
+    def __recreate__(self, *args, **kwargs):
         """
         use this to recreate myself
         """
         if 'convert_children' not in kwargs:
-            kwargs['convert_children']=False
-        return self.__class__(*args,**kwargs)
+            kwargs['convert_children'] = False
+        return self.__class__(*args, **kwargs)
 
-    def _check_if_valid_key_type(self,key):
-        return any(map(lambda x: isinstance(key,x),self._valid_key_types))
+    def _check_if_valid_key_type(self, key):
+        return any(map(lambda x: isinstance(key, x), self._valid_key_types))
 
-    def __getitem__(self,x):
-        def _get(d1,idx,idx_descendants=None):
+    def __getitem__(self, x):
+
+        def _get(d1, idx, idx_descendants = None):
             if self._check_if_valid_key_type(idx):
-                d2 = super(NestD,d1).__getitem__(idx)
+                d2 = super(NestD, d1).__getitem__(idx)
                 if idx_descendants is not None and len(idx_descendants) > 0:
                     d2 = d2[idx_descendants]
-            else: #idx is either slice or non-string iterable
-                if isinstance(idx,slice):
+            else:
+                if isinstance(idx, slice):
                     if idx.start is None and idx.stop is None and idx.step is None:
                         key_filter = lambda a: True
                     else:
                         assert False, 'NestD get cannot accept numeric slices'
-                elif isinstance(idx,collections.Iterable): #idx is a non-string iterable
+                elif isinstance(idx, collections.Iterable):
                     key_filter = lambda a: a in idx
                 else:
                     assert False, 'unhandled index type %s' % str(type(idx))
                 d2 = d1.__recreate__()
                 if idx_descendants is not None and len(idx_descendants) > 0:
-                    for k in filter(key_filter,d1.keys()):
-                        v = super(NestD,d1).__getitem__(k)
-                        if isinstance(v,NestD):
+                    for k in filter(key_filter, d1.keys()):
+                        v = super(NestD, d1).__getitem__(k)
+                        if isinstance(v, NestD):
                             d2[k] = v[idx_descendants]
+
                 else:
-                    for k in filter(key_filter,d1.keys()):
-                        d2[k] = super(NestD,d1).__getitem__(k)
+                    for k in filter(key_filter, d1.keys()):
+                        d2[k] = super(NestD, d1).__getitem__(k)
+
                 d2 = d2.prune()
             return d2
-        if isinstance(x,tuple):
-            return _get(self,x[0],x[1:])
+
+        if isinstance(x, tuple):
+            return _get(self, x[0], x[1:])
         else:
-            return _get(self,x)
+            return _get(self, x)
 
     def __setitem__(self, key, item):
-        assert self._check_if_valid_key_type(key), '%s is not one of the valid key types: %s' % (type(key),str(self._valid_key_types))
-        super(NestD,self).__setitem__(key,item)
+        assert self._check_if_valid_key_type(key), '%s is not one of the valid key types: %s' % (type(key), str(self._valid_key_types))
+        super(NestD, self).__setitem__(key, item)
         if isinstance(item, NestD):
-            item._set_parent(self,key)
+            item._set_parent(self, key)
 
-    def _set_parent(self,parent_obj,parent_key):
+    def _set_parent(self, parent_obj, parent_key):
         self._parent_obj = parent_obj
         self._parent_key = parent_key
 
@@ -100,8 +106,8 @@ class NestD(dict,object):
         >> x[1][2].path()
         [1,2]
         """
-        if hasattr(self,'_parent_key'):
-            return self._parent_obj.path()+[self._parent_key]
+        if hasattr(self, '_parent_key'):
+            return self._parent_obj.path() + [self._parent_key]
         else:
             return []
 
@@ -109,27 +115,26 @@ class NestD(dict,object):
         name = self.__class__.__name__
         return name + '{'
 
-    def __repr_leveled__(self,level=0):
-        indent='  '*level
+    def __repr_leveled__(self, level = 0):
+        indent = '  ' * level
         r = {}
-        for k,v in self.iteritems():
-            if isinstance(v,NestD):
-                r[k] = v.__repr_leveled__(level+1)
+        for k, v in self.iteritems():
+            if isinstance(v, NestD):
+                r[k] = v.__repr_leveled__(level + 1)
+            elif hasattr(v, '__repr__'):
+                r[k] = v.__repr__()
             else:
-                if hasattr(v,'__repr__'):
-                    r[k] = v.__repr__()
-                else:
-                    r[k] = v
+                r[k] = v
+
         header = self.__repr_header__()
         if len(r) > 0:
-            return header+'\n'+('\n'.join('%s%s: %s' % (indent+' ',k,v) for k,v in r.iteritems()))+'}'
+            return header + '\n' + '\n'.join(('%s%s: %s' % (indent + ' ', k, v) for k, v in r.iteritems())) + '}'
         else:
-            return header+' }' 
+            return header + ' }'
 
-    
     def __repr__(self):
         return self.__repr_leveled__()
-        
+
     def walk(self):
         """
         returns an iterator that walks depth-first through namespace
@@ -150,30 +155,57 @@ class NestD(dict,object):
         ((1, 1), 2, 3) 4
         ((1, 1), 2, 5) 6
         """
-        def _walk(d,path=[]):
+
+        def _walk(d, path = []):
             for k in d.keys():
-                _path=path+[k]
-                if isinstance(d[k],dict):
-                    for sub in _walk(d[k],_path):
+                _path = path + [k]
+                if isinstance(d[k], dict):
+                    for sub in _walk(d[k], _path):
                         yield sub
+
                 else:
-                    yield tuple(_path),d[k]
+                    yield (tuple(_path), d[k])
+
         for sub in _walk(self):
             yield sub
 
-    def flatten(self,join=None):
+    def flatten(self, join = None):
         """
          converts hierarchical NestD to NestD of depth 1
          join: {str,None}, when join is not None, keypath elements are converted to string and joined by '/'
          e.g. NestD({'a':{'b':1}}) becomes NestD({'a/b':1})
         """
         if join:
-            assert isinstance(join,str),'join must be a type of string'
-            return self.__recreate__({join.join(k):v for k,v in self.apply(str,keys=True).walk()})
+            assert isinstance(join, str), 'join must be a type of string'
+            return self.__recreate__({join.join(k):v for k, v in self.apply(str, keys=True).walk()})
         else:
             return self.__recreate__(self.walk())
-        
-    def leaves(self,sort_keypaths=True):
+
+    def collapse(self, levels):
+        """
+        Removes a level in the hierarchy and combines the leaves of all duplicate keypaths
+        into a list. If collapse results in an empty keypath, the leaf is discarded.
+        e.g. 
+        >> NestD({'a':{'x':1},'b':{'x':2,'y':3},'c':4}).collapse()
+        NestD{
+         y: [2]
+         x: [1, 4]} 
+        """
+        assert isinstance(levels, list) and all([ isinstance(x, int) for x in levels ]), 'levels must be a list of ints'
+        flattened = self.flatten()
+        keys, vals = zip(*flattened.iteritems())
+        collapsed_keys = [ tuple([ k for i, k in enumerate(kk) if i not in levels ]) for kk in keys ]
+        collapsed_keys = [ k for k in collapsed_keys if len(k) > 0 ]
+        collapsed = {}
+        for k, v in zip(collapsed_keys, vals):
+            if k in collapsed:
+                collapsed[k].append(v)
+            else:
+                collapsed[k] = [v]
+
+        return self.__recreate__().updatepaths(*zip(*collapsed.iteritems()))
+
+    def leaves(self, sort_keypaths = True):
         """
         returns all leaves in NestD flattened into a list
         """
@@ -182,7 +214,7 @@ class NestD(dict,object):
         else:
             return zip(*self.walk())[1]
 
-    def updatepath(self,keypath,value):
+    def updatepath(self, keypath, value):
         """
         e.g.
         >> a = NestD()
@@ -200,17 +232,18 @@ class NestD(dict,object):
         if len(keypath) > 1:
             if k not in self.keys():
                 self[k] = self.__recreate__()
-            self[k].updatepath(keypath[1:],value)
+            self[k].updatepath(keypath[1:], value)
         else:
-            self[k] = value    
+            self[k] = value
         return self
 
-    def updatepaths(self,keypaths,values):
-        for k,v in zip(keypaths,values):
-            self.updatepath(k,v)
+    def updatepaths(self, keypaths, values):
+        for k, v in zip(keypaths, values):
+            self.updatepath(k, v)
+
         return self
 
-    def cascade(self,func,*args,**kwargs):
+    def cascade(self, func, *args, **kwargs):
         """
         apply func to each NestD object in NestD hierarchy 
         with *args and **kwargs as parameters
@@ -218,35 +251,39 @@ class NestD(dict,object):
         d1 = self
         d2 = d1.__recreate__()
         for k in d1.keys():
-            if isinstance(d1[k],NestD):
-                d2[k] = d1[k].cascade(func,*args,**kwargs)
+            if isinstance(d1[k], NestD):
+                d2[k] = d1[k].cascade(func, *args, **kwargs)
             else:
                 d2[k] = d1[k]
-        return func(d2,*args,**kwargs)
-            
+
+        return func(d2, *args, **kwargs)
+
     def prune(self):
         """
         remove empty branches
         """
+
         def _prune(d1):
             d2 = d1.__recreate__()
-            if len(d1)>0:
+            if len(d1) > 0:
                 for k in d1:
-                    if isinstance(d1[k],NestD):
-                        if len(d1[k])>0:
+                    if isinstance(d1[k], NestD):
+                        if len(d1[k]) > 0:
                             d2[k] = d1[k]
                     elif d1[k] is not None:
                         d2[k] = d1[k]
+
             return d2
+
         return self.cascade(_prune)
-                    
+
     def to_dict(self):
         """
         convert all NestD nodes to dictionary
         """
         return self.cascade(dict)
-            
-    def apply(self,func,keys=False,*args,**kwargs):
+
+    def apply(self, func, keys = False, *args, **kwargs):
         """
         recursively apply func to leaves or all keys of NestD
         keys: {True,False} defaults to False, if True, apply func to keys, else apply func to leaves
@@ -280,12 +317,11 @@ class NestD(dict,object):
                 k2 = func(k1)
             else:
                 k2 = k1
-            if isinstance(d1[k1],NestD):
-                d2[k2] = d1[k1].apply(func,keys,*args,**kwargs)
+            if isinstance(d1[k1], NestD):
+                d2[k2] = d1[k1].apply(func, keys, *args, **kwargs)
+            elif keys:
+                d2[k2] = d1[k1]
             else:
-                if keys:
-                    d2[k2] = d1[k1]
-                else:
-                    d2[k2] = func(d1[k1],*args,**kwargs)
-        return d2
+                d2[k2] = func(d1[k1], *args, **kwargs)
 
+        return d2
