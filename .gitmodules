@@ -1,3 +1,0 @@
-[submodule "theanomodels"]
-	path = theanomodels
-	url = git@github.com:clinicalml/theanomodels.git
