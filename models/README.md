@@ -27,7 +27,7 @@ The ApproxM2 model is "approximate" in the sense that, during training, it estim
 
 ### GumbelSoftmaxM2 [2]
 
-This is the model described in [2], which relax the sampling of `q(y|x)` in the variational bound of `logp(x)` to a Gumbel-softmax distribution, which lies on a continuous-domain simplex, and leverage the ![Gumbel-Max trick](https://hips.seas.harvard.edu/blog/2013/04/06/the-gumbel-max-trick-for-discrete-distributions/) to show that this distribution converges to a categorical in the limit as the temperature parameter of the softmax goes to inifinity.  Note that `KL[q(y|x)||p(y)]` is still evaluated using the categorical distribution `q(y|x)`, not the relaxation.  The performance of this model is sensitive to the tuning of the temperature parameter.  See more about this at ~[](http://blog.evjang.com/2016/11/tutorial-categorical-variational.html).
+This is the model described in [2], which relax the sampling of `q(y|x)` in the variational bound of `logp(x)` to a Gumbel-softmax distribution, which lies on a continuous-domain simplex, and leverage the [Gumbel-Max trick](https://hips.seas.harvard.edu/blog/2013/04/06/the-gumbel-max-trick-for-discrete-distributions/) to show that this distribution converges to a categorical in the limit as the temperature parameter of the softmax goes to inifinity.  Note that `KL[q(y|x)||p(y)]` is still evaluated using the categorical distribution `q(y|x)`, not the relaxation.  The performance of this model is sensitive to the tuning of the temperature parameter.  See more about this at [](http://blog.evjang.com/2016/11/tutorial-categorical-variational.html).
 
 ### LogisticNormalM2
 
