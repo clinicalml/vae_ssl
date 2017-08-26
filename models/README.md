@@ -6,10 +6,10 @@ This is a fully-connected work that shares the same architecture as that of `q(y
 
 ## Models based on the M2 model in [1]
 
-![](pngs/M2_diagram.png)
-![](pngs/M2_variational_bound_U.png)
-![](pngs/M2_variational_bound_L.png)
-![](pngs/M2_variational_objective.png)
+![](pngs/M2_diagram.png =100)
+![](pngs/M2_variational_bound_U.png =100)
+![](pngs/M2_variational_bound_L.png =100)
+![](pngs/M2_variational_objective.png =100)
 
 
 #### ExactM2
