@@ -1,3 +1,9 @@
+"""
+This implements a version of the M2 model in:
+
+Kingma, Diederik P., et al. "Semi-supervised learning with deep generative models." Advances in Neural Information Processing Systems. 2014.
+"""
+
 from AbstractSingleStochasticLayerSemiVAE import * 
         
 class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
