@@ -21,6 +21,7 @@ See `results.ipynb` for an example of how to use output results.
 All models, except MLP, are semi-supervised variational autoencoders. The autoencoders are trained on MNIST using 10 random training samples from each digit class as labeled examples, for a total of 100 labeled samples, and all other training samples as unlabeled samples.  The MLP is trained on just the 100 labeled samples.
 
 ### Validation Accuracy 
+Each line represents results for a given model averaged over 10 random seeds across validation epochs.
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/multi_seed_accuracy_validation.png)
 
 ### Samples 
