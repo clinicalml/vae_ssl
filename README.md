@@ -22,11 +22,11 @@ See `results.ipynb` for an example of how to use output results.
 
 ### Samples 
 Samples from both $p(x)$ and $p(x,y)$ of the GumbelSoftmaxM2 model at the end of training:
-![](https://github.com/clinicalml/vae_ssl/blob/master/plots/samples_GumbelSoftmaxM2.png)
+![](https://github.com/clinicalml/vae_ssl/blob/master/plots/samples_GumbelSoftmaxM2_shrp3.0_seed2.png)
 
 ### KL Plots
 KL divergence at each latent node over training epochs for GumberSoftmaxM2 model:
-![](https://github.com/clinicalml/vae_ssl/blob/master/plots/KL_Z_GumbelSoftmaxM2.png)
+![](https://github.com/clinicalml/vae_ssl/blob/master/plots/KL_Z_GumbelSoftmaxM2_shrp3.0_seed2.png)
 
 ### References
 
