@@ -28,7 +28,7 @@ run_flags=[#'--savedir=%s'%savedir,
            '-seed 1',
            '-rv 0.1']
 vary_flags = {
-    'cw128_seed1':'-cw 128 -seed 1 -sharpening 1e1'
+    'cw128_seed1':'-cw 128 -seed 1 -sharpening 3'
 }
 
 numgpus = 2
