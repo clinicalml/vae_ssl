@@ -1,3 +1,13 @@
+"""
+This implements a version of the Gumbel Softmax model in:
+
+Jang, Eric, Shixiang Gu, and Ben Poole. "Categorical reparameterization with gumbel-softmax." arXiv preprint arXiv:1611.01144 (2016).
+
+This model is based off of the M2 model in:
+
+Kingma, Diederik P., et al. "Semi-supervised learning with deep generative models." Advances in Neural Information Processing Systems. 2014.
+"""
+
 from ExactM2 import * 
 
 class GumbelSoftmaxM2SemiVAE(ExactM2SemiVAE):

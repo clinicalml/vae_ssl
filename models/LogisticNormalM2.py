@@ -1,3 +1,11 @@
+"""
+This implements a version of the Gumbel Softmax model in:
+
+Jang, Eric, Shixiang Gu, and Ben Poole. "Categorical reparameterization with gumbel-softmax." arXiv preprint arXiv:1611.01144 (2016).
+
+It uses a logistic normal instead of a gumbel softmax.
+"""
+
 from GumbelSoftmaxM2 import *
 
 class LogisticNormalM2SemiVAE(GumbelSoftmaxM2SemiVAE):
