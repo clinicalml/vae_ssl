@@ -13,7 +13,7 @@ As an example, to train a Gumbel Softmax model similar to the architecture in [2
 ```
 python run/001_GumbelSoftmaxM2.py
 ```
-This will train a semi-supervised variational autoencoder on MNIST using 10 random training samples from each digit class as labeled examples and all other training samples as unlabeled samples.
+This will train a semi-supervised variational autoencoder on MNIST using 10 random training samples from each digit class as labeled examples, for a total of 100 labeled samples, and all other training samples as unlabeled samples.
 
 See `results.ipynb` for an example of how to use output results.
 
@@ -24,7 +24,7 @@ All models, except MLP, are semi-supervised variational autoencoders. The autoen
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/multi_seed_accuracy_validation.png)
 
 ### Samples 
-Samples from both $$p(x)$$ and $$p(x,y)$$ of the GumbelSoftmaxM2 model at the end of training:
+Samples from both `p(x)` and `p(x,y)` of the GumbelSoftmaxM2 model at the end of training:
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/samples_GumbelSoftmaxM2_shrp3.0_seed2.png)
 
 ### KL Plots
