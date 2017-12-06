@@ -6,7 +6,7 @@ p = argparse.ArgumentParser(description="Arguments for variational autoencoder")
 parser = argparse.ArgumentParser()
 
 #Architecture Specification
-parser.add_argument('-ph','--p_dim_hidden', action='store', default = 300, help='Hidden dimensions (in p)', type=int)
+parser.add_argument('-ph','--p_dim_hidden', action='store', default = 200, help='Hidden dimensions (in p)', type=int)
 parser.add_argument('-pl','--p_layers', action='store',default = 4, help='#Layers in Generative Model', type=int)
 parser.add_argument('-pzl','--z_generative_layers', action='store',default = 0, help='#Layers in hidden stack that receives [z] as input and outputs hidden activations in generative model', type=int)
 parser.add_argument('-ds','--dim_stochastic', action='store',default = 50, help='Stochastic dimensions', type=int)
