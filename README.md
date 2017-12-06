@@ -2,7 +2,12 @@
 This repo implements a series of semi-supervised variational autoencoding models in [Theano](http://deeplearning.net/software/theano/).  It uses [theanomodels](https://github.com/clinicalml/theanomodels/tree/jmj/setup_package) as an experimental framework.
 
 # Setup
-First, setup `theanomodels`:
+First, make sure pip and setuptools are up to date:
+```
+pip install -U pip setuptools
+```
+
+Next, setup `theanomodels`:
 ```
 git clone https://github.com/clinicalml/theanomodels
 cd theanomodels
@@ -10,7 +15,7 @@ git checkout 9326bf996b7e2cf622d44ed75c62a5cd7c0dea5a
 pip install -e .
 ```
 
-Next, setup `vae_ssl`:
+Finally, setup `vae_ssl`:
 ```
 cd ../
 git clone https://github.com/clinicalml/vae_ssl
