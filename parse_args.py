@@ -6,12 +6,12 @@ p = argparse.ArgumentParser(description="Arguments for variational autoencoder")
 parser = argparse.ArgumentParser()
 
 #Architecture Specification
-parser.add_argument('-ph','--p_dim_hidden', action='store', default = 3, help='Hidden dimensions (in p)', type=int)
-parser.add_argument('-pl','--p_layers', action='store',default = 3, help='#Layers in Generative Model', type=int)
+parser.add_argument('-ph','--p_dim_hidden', action='store', default = 300, help='Hidden dimensions (in p)', type=int)
+parser.add_argument('-pl','--p_layers', action='store',default = 4, help='#Layers in Generative Model', type=int)
 parser.add_argument('-pzl','--z_generative_layers', action='store',default = 0, help='#Layers in hidden stack that receives [z] as input and outputs hidden activations in generative model', type=int)
-parser.add_argument('-ds','--dim_stochastic', action='store',default = 5, help='Stochastic dimensions', type=int)
-parser.add_argument('-ql','--q_layers', action='store',default = 3, help='#Layers in Recognition Model', type=int)
-parser.add_argument('-qh','--q_dim_hidden', action='store', default = 3, help='Hidden dimensions (in q)', type=int)
+parser.add_argument('-ds','--dim_stochastic', action='store',default = 50, help='Stochastic dimensions', type=int)
+parser.add_argument('-ql','--q_layers', action='store',default = 4, help='#Layers in Recognition Model', type=int)
+parser.add_argument('-qh','--q_dim_hidden', action='store', default = 300, help='Hidden dimensions (in q)', type=int)
 parser.add_argument('-hzl','--hz_inference_layers', action='store',default = 0, help='#Layers in hidden stack that receives [h(x)] as input and outputs [hz(x)]', type=int)
 parser.add_argument('-al','--alpha_inference_layers', action='store',default = 2, help='#Layers in hidden stack that receives [h(x)] as input and outputs [logbeta]', type=int)
 parser.add_argument('-zl','--z_inference_layers', action='store',default = 2, help='#Layers in hidden stack that receives [alpha,hz(x)] as input and outputs [mu,logcov]', type=int)
@@ -19,11 +19,11 @@ parser.add_argument('-yl','--y_inference_layers', action='store',default = 0, he
 parser.add_argument('-nl','--nonlinearity', action='store',default = 'maxout', help='Nonlinarity',type=str, choices=['relu','tanh','softplus','maxout','maxout2'])
 parser.add_argument('-mstride','--maxout_stride', action='store',default = 4, help='Stride for maxout',type=int)
 parser.add_argument('-lky','--leaky_param', action='store',default =0., help='Leaky ReLU parameter',type=float)
-parser.add_argument('-bn','--batchnorm', action='store',default = False, help='Batch Normalization',type=bool)
+parser.add_argument('-bn','--batchnorm', action='store',default = True, help='Batch Normalization',type=bool)
 parser.add_argument('-pn','--p_normlayers', action='store',default = False, help='Allow normalization layers in Generative Model', type=bool)
 
 #Variational Model Specification
-parser.add_argument('-model','--model',action='store',default='LogGamma',help='choose type of graphical model',choices=[
+parser.add_argument('-model','--model',action='store',default='LogisticNormalM2',help='choose type of graphical model',choices=[
     'ExactM2',
     'ApproxM2',
     'LogGamma',
@@ -36,7 +36,7 @@ parser.add_argument('-model','--model',action='store',default='LogGamma',help='c
 ])
 parser.add_argument('-lpo','--learn_posterior',action='store',default=False,help='learn posterior (model-specific implementations)',type=bool)
 parser.add_argument('-pv','--posterior_val',action='store',default=-6.,help='scalar value used in adjusting the posterior of the model conditioned on the class label',type=float)
-parser.add_argument('-sharpening','--sharpening', action='store', default = 1., help='softmax sharpening', type=float)
+parser.add_argument('-sharpening','--sharpening', action='store', default = 3., help='softmax sharpening', type=float)
 parser.add_argument('-betaprior','--betaprior', action='store', default = 0.2, help='dirichlet prior in LogGamma model', type=float)
 parser.add_argument('-finalbeta','--finalbeta', action='store', default = 0.2, help='dirichlet prior final', type=float)
 
@@ -90,7 +90,7 @@ parser.add_argument('-nlpc','--nlabelsperclass', action='store', default = 10, h
 parser.add_argument('-uid','--unique_id', action='store',default = None,help='Unique Identifier',type=str)
 parser.add_argument('-seed','--seed', action='store',default = 1, help='Random Seed',type=int)
 parser.add_argument('-dir','--savedir', action='store',default = './chkpt', help='Prefix for savedir',type=str)
-parser.add_argument('-ep','--epochs', action='store',default = 500, help='MaxEpochs',type=int)
+parser.add_argument('-ep','--epochs', action='store',default = 300, help='MaxEpochs',type=int)
 parser.add_argument('-reload','--reloadDir', action='store',default = None, help='Directory to reload model from',type=str)
 parser.add_argument('-config','--configFile', action='store',default = 'config.json', help='Filename used to save config file (will be saved to json format)',type=str)
 parser.add_argument('-sfreq','--savefreq', action='store',default = 100, help='Frequency of saving',type=int)
