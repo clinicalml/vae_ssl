@@ -19,9 +19,9 @@ pip install -r requirements.txt
 ```
 
 # Training
-As an example, to train a Gumbel Softmax model similar to the architecture in [2], use the command:
+As an example, to train a Gumbel Softmax model conceptually similar to the architecture in [2], use the command:
 ```
-python train.py 
+python train.py -model GumbelSoftmaxM2 
 ```
 This will train a semi-supervised variational autoencoder on MNIST using 10 random training samples from each digit class as labeled examples, for a total of 100 labeled samples, and all other training samples as unlabeled samples.
 
@@ -35,11 +35,11 @@ Each line represents results for a given model averaged over 10 random seeds acr
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/multi_seed_accuracy_validation.png)
 
 ### Samples 
-Samples from both `p(x)` and `p(x,y)` of the GumbelSoftmaxM2 model at the end of training:
+Samples from both `p(x)` and `p(x,y)` of the LogisticNormalM2 model at the end of training:
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/samples_LogisticNormalM2_shrp3.0_seed2.png)
 
 ### KL Plots
-KL divergence at each latent node over training epochs for GumberSoftmaxM2 model:
+KL divergence at each latent node over training epochs for LogisticNormalM2 model:
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/KL_Z_LogisticNormalM2_shrp3.0_seed2.png)
 
 ### References
