@@ -43,10 +43,6 @@ Each line represents results for a given model averaged over 10 random seeds acr
 Samples from both `p(x)` and `p(x,y)` of the LogisticNormalM2 model at the end of training:
 ![](https://github.com/clinicalml/vae_ssl/blob/master/plots/samples_LogisticNormalM2_shrp3.0_seed2.png)
 
-### KL Plots
-KL divergence at each latent node over training epochs for LogisticNormalM2 model:
-![](https://github.com/clinicalml/vae_ssl/blob/master/plots/KL_Z_LogisticNormalM2_shrp3.0_seed2.png)
-
 ### References
 
 [1] Kingma, Diederik P., et al. "Semi-supervised learning with deep generative models." Advances in Neural Information Processing Systems. 2014.
