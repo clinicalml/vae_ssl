@@ -73,7 +73,6 @@ class SampledWithReplacement(Data):
             if idx.step is not None:
                 step = idx.step
             idx = np.arange(self.n)[idx]
-        print idx
         if not isinstance(idx,collections.Hashable): 
             idx = np.random.randint(low=0,high=self.n,size=len(idx))
         return super(SampledWithReplacement,self).__getitem__(idx)

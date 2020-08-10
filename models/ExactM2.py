@@ -126,9 +126,8 @@ class ExactM2SemiVAE(AbstractSingleStochasticLayerSemiVAE):
             for c in range(self.params['nclasses']):
                 start_idx = c*bs
                 end_idx = (c+1)*bs
-                kl += 2*probs[:,c]*KL_Z[start_idx:end_idx].ravel()
+                kl += probs[:,c]*KL_Z[start_idx:end_idx].ravel()
                 nll += probs[:,c]*nllX[start_idx:end_idx].ravel()
-                #kl += probs[:,c]*KL_Z[start_idx:end_idx].ravel()
             KL_Z = kl
             nllX = nll
             KL = KL_Y.sum() + KL_Z.sum()
